@@ -72,6 +72,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "https://ankeshk7.github.io",
+        "https://quantro-api.fly.dev",
     ],
     allow_methods=["*"],
     allow_headers=["*"],

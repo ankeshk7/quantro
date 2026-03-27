@@ -65,7 +65,7 @@ logging.getLogger("urllib3").setLevel(logging.CRITICAL)
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", message=".*possibly delisted.*")
 
-app = FastAPI(title="TradeSense API", version="1.0.0", default_response_class=NumpyJSONResponse)
+app = FastAPI(title="QUANTRO API", version="1.0.0", default_response_class=NumpyJSONResponse)
 
 app.add_middleware(
     CORSMiddleware,

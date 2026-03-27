@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QUANTRO — Wordmark</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #F6F6F4;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      padding: 72px 56px 96px;
+    }
+
+    .page-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #ACACAC;
+      margin-bottom: 60px;
+    }
+
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-width: 600px;
+    }
+
+    .card {
+      background: #FFFFFF;
+      border: 1px solid #E0E0DC;
+      border-radius: 14px;
+      padding: 48px 48px 32px;
+    }
+
+    .card--dark {
+      background: #060606;
+      border-color: #161616;
+    }
+
+    .divider {
+      height: 1px;
+      background: #EDEDE8;
+      margin: 32px 0 26px;
+    }
+
+    .card--dark .divider {
+      background: #161616;
+    }
+
+    .tag {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #C8C8C8;
+    }
+
+    .card--dark .tag {
+      color: #333333;
+    }
+  </style>
+</head>
+<body>
+
+<p class="page-label">QUANTRO · Wordmark Explorations</p>
+
+<div class="stack">
+
+  <!-- ── V1: Standard ─────────────────────────────────────────── -->
+  <div class="card">
+
+    <!-- Large -->
+    <svg viewBox="0 0 280 52" xmlns="http://www.w3.org/2000/svg"
+         style="display:block; width:280px; height:52px">
+      <!-- Q: perfect geometric circle -->
+      <circle cx="22" cy="23" r="15" fill="none" stroke="#000000" stroke-width="4"/>
+      <!-- Q: 45° tail — starts on circle edge, extends 11px -->
+      <line x1="32.6" y1="33.6" x2="40.4" y2="41.4"
+            stroke="#000000" stroke-width="4" stroke-linecap="round"/>
+      <!-- UANTRO -->
+      <text x="45" y="38"
+            font-family="'Inter', 'Helvetica Neue', Arial, sans-serif"
+            font-size="40" font-weight="600" letter-spacing="-0.02em"
+            fill="#000000">UANTRO</text>
+    </svg>
+
+    <div class="divider"></div>
+
+    <!-- Small legibility check -->
+    <svg viewBox="0 0 140 28" xmlns="http://www.w3.org/2000/svg"
+         style="display:block; width:140px; height:28px">
+      <circle cx="11" cy="11.5" r="7.5" fill="none" stroke="#000" stroke-width="2"/>
+      <line x1="16.3" y1="16.8" x2="20.1" y2="20.6"
+            stroke="#000" stroke-width="2" stroke-linecap="round"/>
+      <text x="22" y="19"
+            font-family="'Inter', 'Helvetica Neue', Arial, sans-serif"
+            font-size="20" font-weight="600" letter-spacing="-0.02em"
+            fill="#000">UANTRO</text>
+    </svg>
+
+    <p class="tag" style="margin-top:22px">V1 — Standard · SemiBold 600 · −2% tracking</p>
+  </div>
+
+  <!-- ── V2: Compact tracking ──────────────────────────────────── -->
+  <div class="card">
+
+    <svg viewBox="0 0 268 52" xmlns="http://www.w3.org/2000/svg"
+         style="display:block; width:268px; height:52px">
+      <circle cx="22" cy="23" r="15" fill="none" stroke="#000000" stroke-width="4"/>
+      <line x1="32.6" y1="33.6" x2="40.4" y2="41.4"
+            stroke="#000000" stroke-width="4" stroke-linecap="round"/>
+      <text x="45" y="38"
+            font-family="'Inter', 'Helvetica Neue', Arial, sans-serif"
+            font-size="40" font-weight="600" letter-spacing="-0.04em"
+            fill="#000000">UANTRO</text>
+    </svg>
+
+    <div class="divider"></div>
+
+    <svg viewBox="0 0 136 28" xmlns="http://www.w3.org/2000/svg"
+         style="display:block; width:136px; height:28px">
+      <circle cx="11" cy="11.5" r="7.5" fill="none" stroke="#000" stroke-width="2"/>
+      <line x1="16.3" y1="16.8" x2="20.1" y2="20.6"
+            stroke="#000" stroke-width="2" stroke-linecap="round"/>
+      <text x="22" y="19"
+            font-family="'Inter', 'Helvetica Neue', Arial, sans-serif"
+            font-size="20" font-weight="600" letter-spacing="-0.04em"
+            fill="#000">UANTRO</text>
+    </svg>
+
+    <p class="tag" style="margin-top:22px">V2 — Compact · SemiBold 600 · −4% tracking</p>
+  </div>
+
+  <!-- ── V3: Extended tail ─────────────────────────────────────── -->
+  <div class="card">
+
+    <svg viewBox="0 0 288 60" xmlns="http://www.w3.org/2000/svg"
+         style="display:block; width:288px; height:60px">
+      <circle cx="22" cy="23" r="15" fill="none" stroke="#000000" stroke-width="4"/>
+      <!-- Extended tail: 18px -->
+      <line x1="32.6" y1="33.6" x2="45.3" y2="46.3"
+            stroke="#000000" stroke-width="4" stroke-linecap="round"/>
+      <text x="49" y="38"
+            font-family="'Inter', 'Helvetica Neue', Arial, sans-serif"
+            font-size="40" font-weight="600" letter-spacing="-0.02em"
+            fill="#000000">UANTRO</text>
+    </svg>
+
+    <div class="divider"></div>
+
+    <svg viewBox="0 0 144 32" xmlns="http://www.w3.org/2000/svg"
+         style="display:block; width:144px; height:32px">
+      <circle cx="11" cy="11.5" r="7.5" fill="none" stroke="#000" stroke-width="2"/>
+      <line x1="16.3" y1="16.8" x2="22.6" y2="23.1"
+            stroke="#000" stroke-width="2" stroke-linecap="round"/>
+      <text x="24" y="19"
+            font-family="'Inter', 'Helvetica Neue', Arial, sans-serif"
+            font-size="20" font-weight="600" letter-spacing="-0.02em"
+            fill="#000">UANTRO</text>
+    </svg>
+
+    <p class="tag" style="margin-top:22px">V3 — Extended tail · stronger brand mark</p>
+  </div>
+
+  <!-- ── V4: Bold weight ───────────────────────────────────────── -->
+  <div class="card">
+
+    <svg viewBox="0 0 284 52" xmlns="http://www.w3.org/2000/svg"
+         style="display:block; width:284px; height:52px">
+      <!-- Heavier stroke for bold weight -->
+      <circle cx="22" cy="23" r="15" fill="none" stroke="#000000" stroke-width="5.5"/>
+      <line x1="32.6" y1="33.6" x2="40.4" y2="41.4"
+            stroke="#000000" stroke-width="5.5" stroke-linecap="round"/>
+      <text x="45" y="38"
+            font-family="'Inter', 'Helvetica Neue', Arial, sans-serif"
+            font-size="40" font-weight="700" letter-spacing="-0.02em"
+            fill="#000000">UANTRO</text>
+    </svg>
+
+    <div class="divider"></div>
+
+    <svg viewBox="0 0 142 28" xmlns="http://www.w3.org/2000/svg"
+         style="display:block; width:142px; height:28px">
+      <circle cx="11" cy="11.5" r="7.5" fill="none" stroke="#000" stroke-width="2.75"/>
+      <line x1="16.3" y1="16.8" x2="20.1" y2="20.6"
+            stroke="#000" stroke-width="2.75" stroke-linecap="round"/>
+      <text x="22" y="19"
+            font-family="'Inter', 'Helvetica Neue', Arial, sans-serif"
+            font-size="20" font-weight="700" letter-spacing="-0.02em"
+            fill="#000">UANTRO</text>
+    </svg>
+
+    <p class="tag" style="margin-top:22px">V4 — Bold · weight 700 · more presence</p>
+  </div>
+
+  <!-- ── V5: Dark mode ─────────────────────────────────────────── -->
+  <div class="card card--dark">
+
+    <svg viewBox="0 0 280 52" xmlns="http://www.w3.org/2000/svg"
+         style="display:block; width:280px; height:52px">
+      <circle cx="22" cy="23" r="15" fill="none" stroke="#ffffff" stroke-width="4"/>
+      <line x1="32.6" y1="33.6" x2="40.4" y2="41.4"
+            stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+      <text x="45" y="38"
+            font-family="'Inter', 'Helvetica Neue', Arial, sans-serif"
+            font-size="40" font-weight="600" letter-spacing="-0.02em"
+            fill="#ffffff">UANTRO</text>
+    </svg>
+
+    <div class="divider"></div>
+
+    <svg viewBox="0 0 140 28" xmlns="http://www.w3.org/2000/svg"
+         style="display:block; width:140px; height:28px">
+      <circle cx="11" cy="11.5" r="7.5" fill="none" stroke="#fff" stroke-width="2"/>
+      <line x1="16.3" y1="16.8" x2="20.1" y2="20.6"
+            stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+      <text x="22" y="19"
+            font-family="'Inter', 'Helvetica Neue', Arial, sans-serif"
+            font-size="20" font-weight="600" letter-spacing="-0.02em"
+            fill="#fff">UANTRO</text>
+    </svg>
+
+    <p class="tag" style="margin-top:22px">V5 — Dark mode · white on #060606</p>
+  </div>
+
+</div>
+</body>
+</html>

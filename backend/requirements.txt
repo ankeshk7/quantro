@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+jugaad-data
+yfinance
+feedparser
+pandas
+numpy
+httpx
+requests
+anthropic
+kiteconnect

@@ -1,0 +1,10 @@
+<svg viewBox="0 0 288 60" xmlns="http://www.w3.org/2000/svg">
+  <!-- QUANTRO wordmark — V3: extended tail -->
+  <circle cx="22" cy="23" r="15" fill="none" stroke="#000000" stroke-width="4"/>
+  <line x1="32.6" y1="33.6" x2="45.3" y2="46.3"
+        stroke="#000000" stroke-width="4" stroke-linecap="round"/>
+  <text x="49" y="38"
+        font-family="'Inter', 'Helvetica Neue', Arial, sans-serif"
+        font-size="40" font-weight="600" letter-spacing="-0.02em"
+        fill="#000000">UANTRO</text>
+</svg>

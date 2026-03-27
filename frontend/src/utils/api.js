@@ -1,4 +1,6 @@
-const BASE = '/api'
+// In dev: VITE_API_URL is unset → calls go to /api (proxied to localhost:8000)
+// In prod: VITE_API_URL = https://quantro-api.onrender.com → direct to Render
+const BASE = (import.meta.env.VITE_API_URL ?? '') + '/api'
 
 // credentials: 'include' sends the kite_uid cookie on every request
 async function get(path) {

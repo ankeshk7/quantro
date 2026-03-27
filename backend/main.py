@@ -69,7 +69,10 @@ app = FastAPI(title="QUANTRO API", version="1.0.0", default_response_class=Numpy
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://ankeshk7.github.io",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,

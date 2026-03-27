@@ -28,7 +28,13 @@ function _connect() {
   if (_ws && (_ws.readyState === WebSocket.OPEN || _ws.readyState === WebSocket.CONNECTING)) return
 
   try {
-    _ws = new WebSocket(`ws://${location.host}/ws/ticks`)
+    // In prod VITE_API_URL = https://quantro-api.onrender.com → wss://quantro-api.onrender.com
+    // In dev falls back to the local Vite proxy
+    const apiUrl = import.meta.env.VITE_API_URL
+    const wsBase = apiUrl
+      ? apiUrl.replace(/^http/, 'ws')
+      : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
+    _ws = new WebSocket(`${wsBase}/ws/ticks`)
 
     _ws.onopen = () => {
       _connected = true

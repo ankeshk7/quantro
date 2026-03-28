@@ -223,9 +223,6 @@ export default function App() {
   )
 }
 
-function AppWithToast() {
+export default function AppWithToast() {
   return <ToastProvider><App /></ToastProvider>
 }
-
-// Re-export as default so imports still work
-export { AppWithToast as default }

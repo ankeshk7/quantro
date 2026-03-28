@@ -14,8 +14,15 @@ const FILTERS = [
   { key: 'near_support', label: 'Near support' },
 ]
 
+const SORTS = [
+  { key: 'confidence', label: 'Confidence' },
+  { key: 'change',     label: 'Change %' },
+  { key: 'ivr',        label: 'IVR' },
+]
+
 export function ScannerTab({ onViewTicker }) {
   const [filter, setFilter] = useState('all')
+  const [sort,   setSort]   = useState('confidence')
   const { data, loading, error } = useApi(() => api.scanner(filter), [filter], `scanner-${filter}`)
 
   const badgeCls = (strategy) => {
@@ -26,58 +33,89 @@ export function ScannerTab({ onViewTicker }) {
     return 'badge-gray'
   }
 
+  const sorted = [...(data || [])].sort((a, b) => {
+    if (sort === 'confidence') return (b.confidence ?? 0) - (a.confidence ?? 0)
+    if (sort === 'change')     return Math.abs(b.change ?? 0) - Math.abs(a.change ?? 0)
+    if (sort === 'ivr')        return (b.ivr ?? 0) - (a.ivr ?? 0)
+    return 0
+  })
+
   return (
     <div>
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text1)', marginBottom: 3 }}>F&O Scanner</div>
-        <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-          Scans F&O stocks for options setups based on IVR, OI walls and PCR. Click any row to deep-dive in the Ticker tab.
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)', marginBottom: 2 }}>F&O Scanner</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>Click any stock to open the full Ticker analysis</div>
+        </div>
+        {/* Sort */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sort</span>
+          {SORTS.map(s => (
+            <button key={s.key} onClick={() => setSort(s.key)}
+              style={{ padding: '3px 9px', fontSize: 10, fontWeight: 500, cursor: 'pointer', borderRadius: 4,
+                background: sort === s.key ? 'var(--text1)' : 'var(--bg2)',
+                color:      sort === s.key ? 'var(--bg)'    : 'var(--text3)',
+                border: '0.5px solid var(--border)', transition: 'all 0.12s' }}>
+              {s.label}
+            </button>
+          ))}
         </div>
       </div>
 
+      {/* Filter chips */}
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 10 }}>
         {FILTERS.map(f => (
           <button key={f.key} onClick={() => setFilter(f.key)}
-            style={{ padding: '3px 10px', fontSize: 10, fontWeight: 600, cursor: 'pointer', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.06em',
+            style={{ padding: '4px 11px', fontSize: 10, fontWeight: 600, cursor: 'pointer', borderRadius: 20,
+              textTransform: 'uppercase', letterSpacing: '0.06em',
               background: filter === f.key ? '#EAF3DE' : 'var(--bg2)',
               color:      filter === f.key ? '#3B6D11'  : 'var(--text2)',
-              border: '0.5px solid var(--border)' }}>
+              border: `0.5px solid ${filter === f.key ? '#3B6D11' : 'var(--border)'}`,
+              transition: 'all 0.12s' }}>
             {f.label}
           </button>
         ))}
+        {!loading && data && (
+          <span style={{ fontSize: 10, color: 'var(--text3)', alignSelf: 'center', marginLeft: 4 }}>
+            {sorted.length} result{sorted.length !== 1 ? 's' : ''}
+          </span>
+        )}
       </div>
 
-      {loading ? <Loading /> : error ? <ErrorMsg message={error} /> : (data || []).length === 0 ? (
-        <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
+      {loading ? <Loading type="scanner" /> : error ? <ErrorMsg message={error} /> : sorted.length === 0 ? (
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
           No setups match this filter right now.
         </div>
       ) : (
-        (data || []).map((s, i) => (
-          <div
-            key={i}
-            onClick={() => onViewTicker?.(s.symbol)}
-            style={{ background: 'var(--bg2)', borderRadius: 8, padding: '12px 14px', border: '0.5px solid var(--border)', marginBottom: 6,
+        sorted.map((s, i) => (
+          <div key={i} className="scanner-card" onClick={() => onViewTicker?.(s.symbol)}
+            style={{ background: 'var(--bg2)', borderRadius: 8, padding: '12px 14px',
+              border: '0.5px solid var(--border)', marginBottom: 6,
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              cursor: 'pointer', transition: 'border-color 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--green)'}
-            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+              cursor: 'pointer', transition: 'all 0.15s', gap: 10 }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--green)'; e.currentTarget.style.background = 'var(--bg3)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg2)' }}
           >
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)', fontFamily: 'var(--font-mono)' }}>{s.symbol}</span>
-                <span style={{ fontSize: 12, color: chgColor(s.change) }}>{s.change >= 0 ? '+' : ''}{s.change}%</span>
-                <span style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'var(--font-mono)' }}>{fmt.price(s.price)}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text1)', fontFamily: 'var(--font-mono)' }}>{s.symbol}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: chgColor(s.change) }}>{s.change >= 0 ? '+' : ''}{s.change}%</span>
+                <span style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'var(--font-mono)' }}>₹{fmt.price(s.price)}</span>
               </div>
-              <div style={{ fontSize: 10, color: 'var(--text2)' }}>{s.detail}</div>
+              <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.detail}</div>
+              {/* Confidence bar */}
+              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ flex: 1, height: 3, background: 'var(--bg3)', borderRadius: 2, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${s.confidence}%`, borderRadius: 2, transition: 'width 0.4s',
+                    background: s.confidence >= 75 ? 'var(--green)' : s.confidence >= 55 ? 'var(--amber)' : 'var(--red)' }} />
+                </div>
+                <span style={{ fontSize: 9, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{s.confidence}%</span>
+              </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, marginLeft: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
               <span className={`badge ${badgeCls(s.strategy)}`}>{s.strategy}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 10, color: s.confidence >= 75 ? 'var(--green)' : 'var(--amber)' }}>
-                  {s.confidence}% conf
-                </span>
-                <span style={{ fontSize: 10, color: 'var(--text3)' }}>→</span>
-              </div>
+              {s.ivr != null && <span style={{ fontSize: 9, color: 'var(--text3)' }}>IVR {s.ivr}</span>}
             </div>
           </div>
         ))

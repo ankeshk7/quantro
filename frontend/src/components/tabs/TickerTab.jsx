@@ -278,7 +278,7 @@ function TickerView({ symbol }) {
     return () => clearInterval(id)
   }, [symbol, tickerLive])
 
-  if (loading) return <Loading />
+  if (loading) return <Loading type="ticker" />
   if (error)   return <ErrorMsg message={error} />
 
   const d          = data

@@ -143,3 +143,85 @@ body {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.3; }
 }
+
+/* ── Skeleton shimmer ───────────────────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position: 600px 0; }
+}
+.skeleton {
+  border-radius: 4px;
+  background: linear-gradient(90deg,
+    var(--bg3) 25%, var(--bg2) 50%, var(--bg3) 75%);
+  background-size: 1200px 100%;
+  animation: shimmer 1.6s infinite linear;
+}
+
+/* ── Tab content fade-in ────────────────────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.tab-content { animation: fadeUp 0.18s ease-out; }
+
+/* ── Toast notifications ────────────────────────────────────────────────────── */
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes toastOut {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(16px); }
+}
+.toast-wrap {
+  position: fixed;
+  bottom: 24px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bg);
+  background: var(--text1);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+  pointer-events: auto;
+  animation: toastIn 0.2s ease-out;
+  white-space: nowrap;
+  max-width: 280px;
+}
+.toast.success { background: var(--green); }
+.toast.error   { background: var(--red); }
+.toast.info    { background: var(--blue); }
+
+/* ── Mobile responsive ──────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .stat-grid-3 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .stat-grid-4 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .stat-grid-2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+
+  /* Top bar: shrink paddings on small screens */
+  .top-bar { padding: 0 12px !important; }
+  .top-bar-tabs { gap: 2px !important; }
+  .top-bar-tabs button { padding: 8px 10px !important; font-size: 10px !important; }
+
+  /* Content area */
+  .main-content { padding: 10px 12px 80px !important; }
+
+  /* TickerTab two-col → single col */
+  .ticker-layout { flex-direction: column !important; }
+  .ticker-left, .ticker-right { min-width: unset !important; flex: unset !important; width: 100% !important; }
+
+  /* Scanner cards full width */
+  .scanner-card { padding: 10px 12px !important; }
+
+  /* Toast bottom-center on mobile */
+  .toast-wrap { right: 50%; transform: translateX(50%); bottom: 16px; }
+  .toast { max-width: 92vw; text-align: center; }
+}

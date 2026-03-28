@@ -6,6 +6,7 @@ import HomeTab    from './components/tabs/HomeTab.jsx'
 import ExpiryTab  from './components/tabs/ExpiryTab.jsx'
 import TickerTab  from './components/tabs/TickerTab.jsx'
 import { ScannerTab, PositionsTab, JournalTab, CalculatorTab } from './components/tabs/OtherTabs.jsx'
+import { ToastProvider } from './components/ui/index.jsx'
 
 const BASE_TABS = [
   { id: 'home',      label: 'Home',       badge: null },
@@ -208,8 +209,8 @@ export default function App() {
         ))}
       </div>
 
-      {/* Content */}
-      <div style={{ paddingTop: '1rem' }}>
+      {/* Content — key forces fade-in animation on tab switch */}
+      <div key={active} className="tab-content main-content" style={{ paddingTop: '1rem' }}>
         {active === 'home'      && <HomeTab />}
         {active === 'expiry'    && <ExpiryTab />}
         {active === 'scanner'   && <ScannerTab onViewTicker={goToTicker} />}
@@ -221,3 +222,10 @@ export default function App() {
     </div>
   )
 }
+
+function AppWithToast() {
+  return <ToastProvider><App /></ToastProvider>
+}
+
+// Re-export as default so imports still work
+export { AppWithToast as default }

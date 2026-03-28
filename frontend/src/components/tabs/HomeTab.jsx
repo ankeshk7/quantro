@@ -30,7 +30,7 @@ export default function HomeTab() {
     }
   }
 
-  if (loading) return <Loading />
+  if (loading) return <Loading type="home" />
   if (error)   return <ErrorMsg message={error} />
 
   const { indices, global: g, sectors, fii_dii, calendar } = data

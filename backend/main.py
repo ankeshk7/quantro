@@ -191,25 +191,31 @@ async def _warm_expiry_cache():
 
 @app.get("/api/home")
 async def get_home():
-    """Daily morning dashboard — global markets, sectors, FII/DII, calendar."""
-    indices, global_mkts, sectors, fii_dii, calendar = await asyncio.gather(
+    """Daily morning dashboard — global markets, sectors, FII/DII, calendar, news."""
+    indices, global_mkts, sectors, fii_dii, calendar, headlines = await asyncio.gather(
         _run(market.get_indices),
         _run(market.get_global_markets),
         _run(nse.get_sector_performance),
         _run(nse.get_fii_dii_today),
         _run(market.get_economic_calendar),
+        _run(news.fetch_all),
     )
     # gift_nifty uses precomputed global_mkts; inject NIFTY close for base value
     nifty_close = (indices.get("nifty") or {}).get("price")
     if nifty_close:
         global_mkts = {**global_mkts, "nifty_close": nifty_close}
     gift_nifty = await _run(market.get_gift_nifty, global_mkts)
+    # Prioritise non-neutral headlines, then fill with neutral ones
+    non_neutral = [h for h in headlines if h.get("sentiment") != "neutral"]
+    neutral     = [h for h in headlines if h.get("sentiment") == "neutral"]
+    top_news    = (non_neutral + neutral)[:10]
     return J({
         "indices":  indices,
         "global":   {**global_mkts, "gift_nifty": gift_nifty},
         "sectors":  sectors,
         "fii_dii":  fii_dii,
         "calendar": calendar,
+        "news":     top_news,
     })
 
 

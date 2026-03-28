@@ -25,21 +25,52 @@ _CACHE_TTL   = 600  # 10 minutes
 
 _NEWS_CACHE: dict = {"data": None, "ts": 0.0}
 
+# ── Keyword-based sentiment scoring ──────────────────────────────────────────
+_NEG_WORDS = {
+    "fall", "falls", "fell", "drop", "drops", "dropped", "decline", "declines", "declined",
+    "crash", "crashes", "crashed", "sell-off", "selloff", "plunge", "plunges", "plunged",
+    "tumble", "tumbles", "slump", "slumps", "slumped", "weak", "weakness", "loss", "losses",
+    "negative", "concern", "concerns", "worry", "worries", "worried", "cut", "cuts",
+    "inflation", "deficit", "crisis", "recession", "downgrade", "downgrades", "downgraded",
+    "warning", "risk", "risks", "caution", "fear", "fears", "pressure", "pressured",
+    "volatility", "miss", "missed", "slowdown", "contraction", "default", "sanctions",
+    "below", "disappoints", "disappointing", "downside", "selloff", "bearish", "retreat",
+}
+_POS_WORDS = {
+    "rise", "rises", "rose", "rally", "rallies", "rallied", "surge", "surges", "surged",
+    "gain", "gains", "gained", "record", "high", "strong", "strength", "growth", "profit",
+    "profits", "positive", "beat", "beats", "upgrade", "upgrades", "upgraded",
+    "recovery", "recovers", "bullish", "boost", "boosts", "jump", "jumps", "jumped",
+    "outperform", "buyback", "dividend", "above", "lifted", "inflows", "buy", "upside",
+    "optimism", "optimistic", "opportunity", "expansion", "robust", "healthy",
+}
+
+def _score_sentiment(title: str, summary: str = "") -> str:
+    words = set((title + " " + summary).lower().split())
+    pos = len(words & _POS_WORDS)
+    neg = len(words & _NEG_WORDS)
+    if pos > neg:   return "positive"
+    if neg > pos:   return "negative"
+    return "neutral"
+
 
 def _fetch_feed(source: str, url: str) -> list:
     """Fetch a single RSS feed; returns list of headline dicts."""
     try:
         feed = feedparser.parse(url)
-        return [
-            {
-                "title":     html_lib.unescape(entry.get("title", "")),
-                "summary":   html_lib.unescape(entry.get("summary", "")[:200]),
+        results = []
+        for entry in feed.entries[:MAX_PER_FEED]:
+            title   = html_lib.unescape(entry.get("title", ""))
+            summary = html_lib.unescape(entry.get("summary", "")[:200])
+            results.append({
+                "title":     title,
+                "summary":   summary,
                 "source":    source,
                 "url":       entry.get("link", ""),
                 "published": entry.get("published", ""),
-            }
-            for entry in feed.entries[:MAX_PER_FEED]
-        ]
+                "sentiment": _score_sentiment(title, summary),
+            })
+        return results
     except Exception as e:
         print(f"[News] {source} error: {e}")
         return []

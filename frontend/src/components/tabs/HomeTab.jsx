@@ -3,7 +3,7 @@ import { useApi } from '../../hooks/useApi.js'
 import { useTicker, useTickerConnected } from '../../hooks/useTicker.js'
 import { api } from '../../utils/api.js'
 import { fmt, chgColor, impactBadge } from '../../utils/formatters.js'
-import { StatCard, SectionTitle, Loading, ErrorMsg, SignalRow } from '../ui/index.jsx'
+import { StatCard, SectionTitle, Loading, ErrorMsg, SignalRow, NewsCard } from '../ui/index.jsx'
 
 function usePriceFlash(price) {
   const prev  = useRef(null)
@@ -180,6 +180,16 @@ export default function HomeTab() {
           <span className={`badge ${impactBadge(ev.impact)}`}>{ev.impact?.replace('_', ' ')}</span>
         </div>
       ))}
+
+      {/* Market news */}
+      {(data?.news || []).length > 0 && (
+        <>
+          <SectionTitle>Market news</SectionTitle>
+          {(data.news || []).map((n, i) => (
+            <NewsCard key={i} headline={n.title} source={n.source} sentiment={n.sentiment} url={n.url} />
+          ))}
+        </>
+      )}
     </div>
   )
 }

@@ -78,12 +78,13 @@ _MACRO_EVENTS = [
 ]
 
 
-def _weekly_expiry_thursdays(from_date: "date", days: int = 365) -> list:
-    """Generate all Thursdays (NIFTY weekly expiry) for the next `days` days."""
+def _weekly_expiry_tuesdays(from_date: "date", days: int = 365) -> list:
+    """Fallback: generate all Tuesdays (NIFTY weekly expiry) for the next `days` days.
+    Used only when NSE API is unreachable; real dates come from get_nse_expiry_dates()."""
     events = []
     d = from_date
-    # advance to nearest Thursday
-    while d.weekday() != 3:
+    # advance to nearest Tuesday (weekday 1)
+    while d.weekday() != 1:
         d += timedelta(days=1)
     cutoff = from_date + timedelta(days=days)
     while d <= cutoff:
@@ -223,13 +224,13 @@ class MarketData:
             }
 
     def get_economic_calendar(self) -> list:
-        """Economic events for the next 365 days: weekly expiries + macro events."""
+        """Macro events for the next 365 days (expiry dates injected by main.py from NSE API)."""
         today  = date.today()
         cutoff = today + timedelta(days=365)
         macro  = [e for e in _MACRO_EVENTS if today.isoformat() <= e["date"] <= cutoff.isoformat()]
-        expiry = _weekly_expiry_thursdays(today, 365)
-        merged = sorted(macro + expiry, key=lambda e: e["date"])
-        return merged
+        # Fallback weekly expiries — replaced by real NSE dates in main.py when NSE is reachable
+        expiry = _weekly_expiry_tuesdays(today, 365)
+        return sorted(macro + expiry, key=lambda e: e["date"])
 
     # ── Mock data ──────────────────────────────────────────────────────────────
 

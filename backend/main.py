@@ -192,19 +192,30 @@ async def _warm_expiry_cache():
 @app.get("/api/home")
 async def get_home():
     """Daily morning dashboard — global markets, sectors, FII/DII, calendar, news."""
-    indices, global_mkts, sectors, fii_dii, calendar, headlines = await asyncio.gather(
+    indices, global_mkts, sectors, fii_dii, macro_cal, headlines, nse_expiries = await asyncio.gather(
         _run(market.get_indices),
         _run(market.get_global_markets),
         _run(nse.get_sector_performance),
         _run(nse.get_fii_dii_today),
         _run(market.get_economic_calendar),
         _run(news.fetch_all),
+        _run(nse.get_nse_expiry_dates),   # real NSE expiry dates
     )
     # gift_nifty uses precomputed global_mkts; inject NIFTY close for base value
     nifty_close = (indices.get("nifty") or {}).get("price")
     if nifty_close:
         global_mkts = {**global_mkts, "nifty_close": nifty_close}
     gift_nifty = await _run(market.get_gift_nifty, global_mkts)
+
+    # Merge real NSE expiry dates with macro events, deduplicate by date+event
+    expiry_events = [
+        {"date": d, "event": "NIFTY weekly expiry", "impact": "trade_day"}
+        for d in nse_expiries
+    ]
+    # macro_cal already has fallback expiry Thursdays — drop them; real dates win
+    macro_only  = [e for e in macro_cal if e.get("event") != "NIFTY weekly expiry"]
+    calendar    = sorted(macro_only + expiry_events, key=lambda e: e["date"])
+
     # Prioritise non-neutral headlines, then fill with neutral ones
     non_neutral = [h for h in headlines if h.get("sentiment") != "neutral"]
     neutral     = [h for h in headlines if h.get("sentiment") == "neutral"]
@@ -283,7 +294,8 @@ async def get_ticker(symbol: str):
             print(f"[ticker/{symbol}] {label} failed: {results[i]}")
 
     try:
-        oi    = OIAnalysis(oi_data)
+        spot_price = price.get("price") if isinstance(price, dict) else None
+        oi    = OIAnalysis(oi_data, spot=spot_price)   # pass real spot so ATM is correct
         walls = oi.oi_walls()
         fit   = StrategyFit.recommend(
             range_width = walls["range_width"],

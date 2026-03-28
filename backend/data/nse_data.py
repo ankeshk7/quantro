@@ -132,6 +132,7 @@ _LOT_TTL    = 3600  # 1 hour – lot sizes change rarely
 
 _LOT_CACHE: dict = {}         # symbol → {lot_size, ts}
 _FO_LOTS_CACHE: dict = {"data": None, "ts": 0.0}   # full CSV lot table, 24h TTL
+_EXPIRY_CACHE: dict = {"data": None, "ts": 0.0}    # NSE expiry dates, 6h TTL
 
 
 def _load_fo_lot_sizes() -> dict:
@@ -452,11 +453,12 @@ class NSEData:
             spot = float((raw.get("records") or {}).get("underlyingValue") or 22000)
 
             rows = []
-            # Use near-expiry date from the first record that has data
+            # Adaptive range: ±10% of spot or 600 pts minimum (handles NIFTY at 22k and stocks at 500)
+            range_pts = max(600, int(spot * 0.12))
             near_expiry = ""
             for r in records:
                 strike = int(r.get("strikePrice", 0))
-                if abs(strike - spot) > 600:   # keep ±600 pts from ATM
+                if abs(strike - spot) > range_pts:
                     continue
                 ce = r.get("CE") or {}
                 pe = r.get("PE") or {}
@@ -491,6 +493,38 @@ class NSEData:
         except Exception as e:
             print(f"[NSE] options chain {symbol}: {e}")
             return pd.DataFrame()   # API failure → empty (not mock) so UI stays clean
+
+    # ── NSE Expiry Dates ──────────────────────────────────────────────────────
+
+    def get_nse_expiry_dates(self) -> list:
+        """
+        Fetch real NSE expiry dates from NIFTY option chain.
+        Returns list of ISO date strings e.g. ['2026-03-31', '2026-04-07', ...]
+        Cached for 6 hours. Falls back to empty list on failure.
+        """
+        from datetime import datetime
+        now = time.monotonic()
+        if _EXPIRY_CACHE["data"] is not None and now - _EXPIRY_CACHE["ts"] < 21600:
+            return _EXPIRY_CACHE["data"]
+        try:
+            nse = _get_nse()
+            if nse is None:
+                return []
+            raw    = nse.index_option_chain("NIFTY")
+            dates  = (raw.get("records") or {}).get("expiryDates") or []
+            # Convert "30-Mar-2026" → "2026-03-30"
+            iso    = []
+            for d in dates:
+                try:
+                    iso.append(datetime.strptime(d, "%d-%b-%Y").strftime("%Y-%m-%d"))
+                except Exception:
+                    pass
+            _EXPIRY_CACHE["data"] = iso
+            _EXPIRY_CACHE["ts"]   = now
+            return iso
+        except Exception as e:
+            print(f"[NSE] expiry dates: {e}")
+            return _EXPIRY_CACHE.get("data") or []
 
     # ── India VIX ─────────────────────────────────────────────────────────────
 

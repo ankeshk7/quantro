@@ -99,10 +99,10 @@ function MonthCalendar({ events = [] }) {
   const canNext = !(year === maxYear && month === 11)
 
   return (
-    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+    <div>
 
-      {/* ── Left: month grid ──────────────────────────────────── */}
-      <div style={{ flex: '0 0 auto', width: 236 }}>
+      {/* ── Top: month grid ───────────────────────────────────── */}
+      <div>
 
         {/* Month nav */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -130,60 +130,43 @@ function MonthCalendar({ events = [] }) {
         </div>
 
         {/* Date cells */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
           {cells.map((d, i) => {
             if (!d) return <div key={`b${i}`} />
-            const iso     = isoDate(d)
-            const dayEvs  = byDate[iso] || []
+            const iso    = isoDate(d)
+            const dayEvs = byDate[iso] || []
             const isToday = iso === todayIso
             const isSel   = iso === selected
             const isPast  = iso < todayIso
             const isSun   = d.getDay() === 0
             const isSat   = d.getDay() === 6
-
-            // pick the highest-impact event for the dot color
-            const topColor = dayEvs.length
-              ? (IMPACT_DOT[dayEvs[0].impact] || 'var(--text3)')
-              : null
+            const topColor = dayEvs.length ? (IMPACT_DOT[dayEvs[0].impact] || 'var(--text3)') : null
 
             return (
               <div key={iso} onClick={() => setSelected(iso)}
                 style={{
-                  textAlign: 'center',
-                  borderRadius: 6,
-                  padding: '4px 2px 3px',
-                  cursor: 'pointer',
-                  position: 'relative',
-                  background: isSel
-                    ? 'var(--text1)'
-                    : isToday
-                      ? 'var(--green)'
-                      : 'transparent',
-                  transition: 'background 0.12s',
-                  opacity: isPast && !isToday && !isSel ? 0.45 : 1,
+                  textAlign: 'center', borderRadius: 7, padding: '7px 4px 5px',
+                  cursor: 'pointer', transition: 'background 0.12s',
+                  background: isSel ? 'var(--text1)' : isToday ? 'var(--green)' : 'transparent',
+                  opacity: isPast && !isToday && !isSel ? 0.4 : 1,
                 }}
                 onMouseEnter={e => { if (!isSel && !isToday) e.currentTarget.style.background = 'var(--bg2)' }}
                 onMouseLeave={e => { if (!isSel && !isToday) e.currentTarget.style.background = 'transparent' }}
               >
                 <div style={{
-                  fontSize: 11, fontWeight: isSel || isToday ? 600 : 400, lineHeight: 1.4,
+                  fontSize: 13, fontWeight: isSel || isToday ? 600 : 400, lineHeight: 1.3,
                   color: isSel || isToday ? 'var(--bg)' : isSun || isSat ? 'var(--text3)' : 'var(--text2)',
                 }}>
                   {d.getDate()}
                 </div>
-                {/* Event dot — show only if has events */}
-                <div style={{ height: 4, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, marginTop: 1 }}>
+                <div style={{ height: 5, display: 'flex', justifyContent: 'center', gap: 2, marginTop: 2 }}>
                   {dayEvs.length > 0 && (
-                    <span style={{
-                      width: 4, height: 4, borderRadius: '50%', display: 'inline-block',
-                      background: isSel || isToday ? 'rgba(255,255,255,0.75)' : topColor,
-                    }} />
+                    <span style={{ width: 4, height: 4, borderRadius: '50%', display: 'inline-block',
+                      background: isSel || isToday ? 'rgba(255,255,255,0.8)' : topColor }} />
                   )}
                   {dayEvs.length > 1 && (
-                    <span style={{
-                      width: 4, height: 4, borderRadius: '50%', display: 'inline-block',
-                      background: isSel || isToday ? 'rgba(255,255,255,0.5)' : (IMPACT_DOT[dayEvs[1].impact] || 'var(--text3)'),
-                    }} />
+                    <span style={{ width: 4, height: 4, borderRadius: '50%', display: 'inline-block',
+                      background: isSel || isToday ? 'rgba(255,255,255,0.5)' : (IMPACT_DOT[dayEvs[1].impact] || 'var(--text3)') }} />
                   )}
                 </div>
               </div>
@@ -191,66 +174,60 @@ function MonthCalendar({ events = [] }) {
           })}
         </div>
 
-        {/* Today button */}
-        {(year !== today.getFullYear() || month !== today.getMonth()) && (
-          <button onClick={goToday}
-            style={{ marginTop: 10, width: '100%', padding: '5px', fontSize: 10, cursor: 'pointer', borderRadius: 6, border: '0.5px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Today
-          </button>
-        )}
-
-        {/* Legend */}
-        <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: '4px 10px' }}>
-          {[
-            { label: 'Expiry',   color: 'var(--green)' },
-            { label: 'Watch',    color: 'var(--amber)' },
-            { label: 'High/Extreme', color: 'var(--red)' },
-          ].map(l => (
-            <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: 'var(--text3)' }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: l.color, display: 'inline-block', flexShrink: 0 }} />
-              {l.label}
-            </div>
-          ))}
+        {/* Bottom row: Today button + legend */}
+        <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {[
+              { label: 'Expiry',   color: 'var(--green)' },
+              { label: 'Watch',    color: 'var(--amber)' },
+              { label: 'High / Extreme', color: 'var(--red)' },
+            ].map(l => (
+              <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: 'var(--text3)' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: l.color, display: 'inline-block' }} />
+                {l.label}
+              </div>
+            ))}
+          </div>
+          {(year !== today.getFullYear() || month !== today.getMonth()) && (
+            <button onClick={goToday}
+              style={{ padding: '3px 10px', fontSize: 10, cursor: 'pointer', borderRadius: 6, border: '0.5px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Today
+            </button>
+          )}
         </div>
       </div>
 
-      {/* ── Right: event detail panel ──────────────────────────── */}
-      <div style={{ flex: 1, minWidth: 180 }}>
+      {/* ── Bottom: event detail panel ────────────────────────── */}
+      <div style={{ marginTop: 12 }}>
         {/* Selected date header */}
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text1)' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)' }}>
             {selDateObj.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-          </div>
+          </span>
           {selected === todayIso && (
-            <div style={{ fontSize: 10, color: 'var(--green)', marginTop: 1, fontWeight: 500 }}>Today</div>
+            <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 500 }}>Today</span>
           )}
         </div>
 
         {selEvents.length === 0 ? (
-          <div style={{ borderRadius: 10, border: '0.5px solid var(--border)', padding: '24px 16px', textAlign: 'center', background: 'var(--bg2)' }}>
-            <div style={{ fontSize: 24, marginBottom: 6 }}>📅</div>
-            <div style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 500, marginBottom: 3 }}>No events scheduled</div>
-            <div style={{ fontSize: 11, color: 'var(--text3)' }}>Clean trading day — no macro data releases.</div>
+          <div style={{ borderRadius: 8, border: '0.5px solid var(--border)', padding: '14px 16px', background: 'var(--bg2)', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 18 }}>📅</span>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 500 }}>No events scheduled</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>Clean trading day — no macro data releases.</div>
+            </div>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {selEvents.map((ev, i) => (
-              <div key={i} style={{
-                borderRadius: 10,
-                border: '0.5px solid var(--border)',
-                overflow: 'hidden',
-                background: 'var(--bg2)',
-              }}>
-                {/* Colored top bar */}
+              <div key={i} style={{ borderRadius: 8, border: '0.5px solid var(--border)', overflow: 'hidden', background: 'var(--bg2)' }}>
                 <div style={{ height: 3, background: IMPACT_DOT[ev.impact] || 'var(--text3)' }} />
-                <div style={{ padding: '12px 14px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)', lineHeight: 1.3, flex: 1, marginRight: 8 }}>{ev.event}</span>
-                    <span className={`badge ${impactBadge(ev.impact)}`} style={{ flexShrink: 0 }}>{IMPACT_LABEL[ev.impact] || ev.impact}</span>
+                <div style={{ padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text1)', marginBottom: 3 }}>{ev.event}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.55 }}>{IMPACT_DESC[ev.impact] || ''}</div>
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.65 }}>
-                    {IMPACT_DESC[ev.impact] || ''}
-                  </div>
+                  <span className={`badge ${impactBadge(ev.impact)}`} style={{ flexShrink: 0, marginTop: 1 }}>{IMPACT_LABEL[ev.impact] || ev.impact}</span>
                 </div>
               </div>
             ))}

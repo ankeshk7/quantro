@@ -23,15 +23,77 @@ TICKERS = {
     "hangseng": "^HSI",
 }
 
-ECONOMIC_CALENDAR = [
-    {"date": "2026-03-24", "event": "US PMI data",           "impact": "moderate"},
-    {"date": "2026-03-25", "event": "NIFTY weekly expiry",   "impact": "trade_day"},
-    {"date": "2026-03-26", "event": "India CPI release",     "impact": "moderate"},
-    {"date": "2026-03-27", "event": "US GDP Q4 final",       "impact": "watch"},
-    {"date": "2026-03-28", "event": "No major events",       "impact": "clear"},
-    {"date": "2026-04-01", "event": "RBI MPC decision",      "impact": "extreme"},
-    {"date": "2026-04-07", "event": "India trade data",      "impact": "low"},
+# Static high-impact macro events (updated periodically)
+_MACRO_EVENTS = [
+    # ── March 2026 ──────────────────────────────────────────────────────────────
+    {"date": "2026-03-12", "event": "India CPI (Feb)",           "impact": "moderate"},
+    {"date": "2026-03-14", "event": "India WPI (Feb)",           "impact": "low"},
+    {"date": "2026-03-19", "event": "US Fed FOMC decision",      "impact": "extreme"},
+    {"date": "2026-03-24", "event": "India PMI Flash",           "impact": "moderate"},
+    {"date": "2026-03-26", "event": "India IIP (Jan)",           "impact": "low"},
+    {"date": "2026-03-27", "event": "US GDP Q4 Final",           "impact": "watch"},
+    {"date": "2026-03-31", "event": "India fiscal year end",     "impact": "watch"},
+    # ── April 2026 ──────────────────────────────────────────────────────────────
+    {"date": "2026-04-01", "event": "India new fiscal year",     "impact": "watch"},
+    {"date": "2026-04-08", "event": "RBI MPC decision",         "impact": "extreme"},
+    {"date": "2026-04-11", "event": "India CPI (Mar)",           "impact": "moderate"},
+    {"date": "2026-04-14", "event": "India WPI (Mar)",           "impact": "low"},
+    {"date": "2026-04-16", "event": "US retail sales",           "impact": "moderate"},
+    {"date": "2026-04-29", "event": "US Fed FOMC decision",      "impact": "extreme"},
+    {"date": "2026-04-30", "event": "US GDP Q1 Advance",         "impact": "high"},
+    # ── May 2026 ────────────────────────────────────────────────────────────────
+    {"date": "2026-05-01", "event": "India PMI Mfg",             "impact": "low"},
+    {"date": "2026-05-12", "event": "India CPI (Apr)",           "impact": "moderate"},
+    {"date": "2026-05-15", "event": "India IIP (Mar)",           "impact": "low"},
+    {"date": "2026-05-29", "event": "India Q4 GDP advance",      "impact": "high"},
+    # ── June 2026 ───────────────────────────────────────────────────────────────
+    {"date": "2026-06-05", "event": "US Non-Farm Payrolls",      "impact": "moderate"},
+    {"date": "2026-06-06", "event": "RBI MPC decision",         "impact": "extreme"},
+    {"date": "2026-06-10", "event": "India CPI (May)",           "impact": "moderate"},
+    {"date": "2026-06-17", "event": "US Fed FOMC decision",      "impact": "extreme"},
+    # ── July 2026 ───────────────────────────────────────────────────────────────
+    {"date": "2026-07-07", "event": "India CPI (Jun)",           "impact": "moderate"},
+    {"date": "2026-07-08", "event": "RBI MPC decision",         "impact": "extreme"},
+    {"date": "2026-07-29", "event": "US Fed FOMC decision",      "impact": "extreme"},
+    {"date": "2026-07-30", "event": "US GDP Q2 Advance",         "impact": "high"},
+    # ── August 2026 ─────────────────────────────────────────────────────────────
+    {"date": "2026-08-12", "event": "India CPI (Jul)",           "impact": "moderate"},
+    {"date": "2026-08-14", "event": "India IIP (Jun)",           "impact": "low"},
+    # ── September 2026 ──────────────────────────────────────────────────────────
+    {"date": "2026-09-12", "event": "India CPI (Aug)",           "impact": "moderate"},
+    {"date": "2026-09-16", "event": "US Fed FOMC decision",      "impact": "extreme"},
+    {"date": "2026-09-30", "event": "India Q1 FY27 GDP",         "impact": "high"},
+    # ── October 2026 ────────────────────────────────────────────────────────────
+    {"date": "2026-10-07", "event": "RBI MPC decision",         "impact": "extreme"},
+    {"date": "2026-10-13", "event": "India CPI (Sep)",           "impact": "moderate"},
+    {"date": "2026-10-28", "event": "US Fed FOMC decision",      "impact": "extreme"},
+    # ── November 2026 ───────────────────────────────────────────────────────────
+    {"date": "2026-11-12", "event": "India CPI (Oct)",           "impact": "moderate"},
+    {"date": "2026-11-13", "event": "India IIP (Sep)",           "impact": "low"},
+    # ── December 2026 ───────────────────────────────────────────────────────────
+    {"date": "2026-12-04", "event": "RBI MPC decision",         "impact": "extreme"},
+    {"date": "2026-12-10", "event": "India CPI (Nov)",           "impact": "moderate"},
+    {"date": "2026-12-16", "event": "US Fed FOMC decision",      "impact": "extreme"},
+    {"date": "2026-12-31", "event": "Calendar year end",         "impact": "watch"},
 ]
+
+
+def _weekly_expiry_thursdays(from_date: "date", days: int = 365) -> list:
+    """Generate all Thursdays (NIFTY weekly expiry) for the next `days` days."""
+    events = []
+    d = from_date
+    # advance to nearest Thursday
+    while d.weekday() != 3:
+        d += timedelta(days=1)
+    cutoff = from_date + timedelta(days=days)
+    while d <= cutoff:
+        events.append({"date": d.isoformat(), "event": "NIFTY weekly expiry", "impact": "trade_day"})
+        d += timedelta(weeks=1)
+    return events
+
+
+# Legacy alias — kept so existing callers don't break
+ECONOMIC_CALENDAR = _MACRO_EVENTS
 
 _GLOBAL_CACHE: dict = {"data": None, "ts": 0.0}
 _CACHE_TTL = 300  # 5 minutes
@@ -161,14 +223,13 @@ class MarketData:
             }
 
     def get_economic_calendar(self) -> list:
-        """Economic events for the next 4 weeks (from today onwards)."""
-        today   = date.today()
-        cutoff  = today + timedelta(days=28)
-        events  = [
-            e for e in ECONOMIC_CALENDAR
-            if today.isoformat() <= e["date"] <= cutoff.isoformat()
-        ]
-        return events if events else ECONOMIC_CALENDAR
+        """Economic events for the next 365 days: weekly expiries + macro events."""
+        today  = date.today()
+        cutoff = today + timedelta(days=365)
+        macro  = [e for e in _MACRO_EVENTS if today.isoformat() <= e["date"] <= cutoff.isoformat()]
+        expiry = _weekly_expiry_thursdays(today, 365)
+        merged = sorted(macro + expiry, key=lambda e: e["date"])
+        return merged
 
     # ── Mock data ──────────────────────────────────────────────────────────────
 

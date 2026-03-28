@@ -5,7 +5,7 @@ import { api } from '../../utils/api.js'
 import { fmt, chgColor, impactBadge } from '../../utils/formatters.js'
 import { StatCard, SectionTitle, Loading, ErrorMsg, SignalRow, NewsCard } from '../ui/index.jsx'
 
-// ── Weekly Calendar ───────────────────────────────────────────────────────────
+// ── Month Calendar ────────────────────────────────────────────────────────────
 const IMPACT_DOT = {
   extreme:   'var(--red)',
   high:      'var(--red)',
@@ -25,145 +25,239 @@ const IMPACT_LABEL = {
   clear:     'Clear',
 }
 const IMPACT_DESC = {
-  extreme:   'Major macro event — expect large intraday moves. Consider sitting out.',
-  high:      'High-impact data release. Volatility likely around announcement time.',
-  watch:     'Worth watching. May cause moderate price swings.',
-  moderate:  'Moderate impact. Market may react briefly, likely to stabilise.',
-  trade_day: 'Weekly expiry day — premium decay accelerates sharply after 12 PM.',
-  low:       'Low expected impact on indices.',
-  clear:     'No major scheduled events today.',
+  extreme:   'Major macro event — expect large intraday moves. Consider sitting out or hedging aggressively.',
+  high:      'High-impact data release. Volatility likely around the announcement time.',
+  watch:     'Worth watching closely. May cause moderate price swings depending on the outcome.',
+  moderate:  'Moderate impact. Markets may react briefly but are likely to stabilise.',
+  trade_day: 'Weekly NIFTY expiry — premium decay accelerates sharply after 12 PM. Manage positions early.',
+  low:       'Low expected impact on broad indices. Normal trading conditions.',
+  clear:     'No major scheduled events. Clean technical tape.',
 }
-const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
+const DOW_LABELS  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
 function isoDate(d) {
-  return d.toISOString().slice(0, 10)
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
 
-function WeeklyCalendar({ events = [] }) {
-  const [weekOff, setWeekOff] = useState(0)
-  const [selected, setSelected] = useState(() => isoDate(new Date()))
-
-  // Monday of the displayed week
-  const today = new Date()
-  const monday = new Date(today)
-  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + weekOff * 7)
-
-  const days = Array.from({ length: 5 }, (_, i) => {
-    const d = new Date(monday)
-    d.setDate(monday.getDate() + i)
-    return d
-  })
-
+function MonthCalendar({ events = [] }) {
+  const today    = new Date()
   const todayIso = isoDate(today)
-  const byDate   = {}
+
+  const [year,     setYear]     = useState(today.getFullYear())
+  const [month,    setMonth]    = useState(today.getMonth())
+  const [selected, setSelected] = useState(todayIso)
+
+  // Clamp: stay within ±1 year of today
+  const minYear = today.getFullYear() - 1
+  const maxYear = today.getFullYear() + 1
+
+  const prevMonth = () => {
+    if (month === 0) {
+      if (year <= minYear) return
+      setMonth(11); setYear(y => y - 1)
+    } else {
+      setMonth(m => m - 1)
+    }
+  }
+  const nextMonth = () => {
+    if (month === 11) {
+      if (year >= maxYear) return
+      setMonth(0); setYear(y => y + 1)
+    } else {
+      setMonth(m => m + 1)
+    }
+  }
+
+  // Build day cells for this month (including leading/trailing blanks)
+  const firstDay  = new Date(year, month, 1)
+  const daysInMon = new Date(year, month + 1, 0).getDate()
+  const startDow  = firstDay.getDay()           // 0=Sun
+  const cells     = Array(startDow).fill(null)
+  for (let d = 1; d <= daysInMon; d++) cells.push(new Date(year, month, d))
+  // Pad to complete last row
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  // Index events by date
+  const byDate = {}
   for (const ev of events) {
     if (!byDate[ev.date]) byDate[ev.date] = []
     byDate[ev.date].push(ev)
   }
 
-  const selectedEvents = byDate[selected] || []
-  const weekLabel = `${days[0].toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })} – ${days[4].toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}`
+  const selEvents = byDate[selected] || []
+  const selDateObj = new Date(selected + 'T12:00:00')
+
+  // Today indicator: jump back to today's month
+  const goToday = () => {
+    setYear(today.getFullYear())
+    setMonth(today.getMonth())
+    setSelected(todayIso)
+  }
+
+  const canPrev = !(year === minYear && month === 0)
+  const canNext = !(year === maxYear && month === 11)
 
   return (
-    <div>
-      {/* Week nav */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <button onClick={() => setWeekOff(w => w - 1)}
-          style={{ border: '0.5px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 13 }}>
-          ‹
-        </button>
-        <span style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 500 }}>{weekLabel}</span>
-        <button onClick={() => setWeekOff(w => w + 1)}
-          style={{ border: '0.5px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 13 }}>
-          ›
-        </button>
-      </div>
+    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
 
-      {/* Day grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4, marginBottom: 10 }}>
-        {days.map((d, i) => {
-          const iso       = isoDate(d)
-          const dayEvs    = byDate[iso] || []
-          const isToday   = iso === todayIso
-          const isSel     = iso === selected
-          const isPast    = iso < todayIso
+      {/* ── Left: month grid ──────────────────────────────────── */}
+      <div style={{ flex: '0 0 auto', width: 236 }}>
 
-          return (
-            <div key={iso} onClick={() => setSelected(isSel ? null : iso)}
-              style={{
-                cursor: 'pointer',
-                borderRadius: 10,
-                padding: '10px 6px 8px',
-                textAlign: 'center',
-                transition: 'all 0.15s',
-                border: `0.5px solid ${isSel ? 'var(--text2)' : isToday ? 'var(--green)' : 'var(--border)'}`,
-                background: isSel ? 'var(--bg3)' : isToday ? 'var(--bg2)' : 'var(--bg)',
-                opacity: isPast && !isToday ? 0.55 : 1,
-              }}
-              onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'var(--bg2)' }}
-              onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = isToday ? 'var(--bg2)' : 'var(--bg)' }}
-            >
-              <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.07em', color: isToday ? 'var(--green)' : 'var(--text3)', marginBottom: 3, fontWeight: isToday ? 600 : 400 }}>
-                {DAY_NAMES[i]}
-              </div>
-              <div style={{ fontSize: 20, fontWeight: 500, fontFamily: 'var(--font-mono)', color: isToday ? 'var(--text1)' : 'var(--text2)', lineHeight: 1 }}>
-                {d.getDate()}
-              </div>
-              {/* Event dots */}
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 3, marginTop: 6, minHeight: 7 }}>
-                {dayEvs.map((ev, j) => (
-                  <span key={j} style={{
-                    width: 6, height: 6, borderRadius: '50%', display: 'inline-block',
-                    background: IMPACT_DOT[ev.impact] || 'var(--text3)',
-                  }} />
-                ))}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Event detail panel */}
-      {selected && (
-        <div style={{ borderRadius: 10, border: '0.5px solid var(--border)', overflow: 'hidden', background: 'var(--bg2)' }}>
-          {/* Panel header */}
-          <div style={{ padding: '8px 12px', borderBottom: '0.5px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text1)' }}>
-              {new Date(selected + 'T12:00:00').toLocaleDateString('en-IN', { weekday: 'long', month: 'long', day: 'numeric' })}
-            </span>
-            <button onClick={() => setSelected(null)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 16, lineHeight: 1, padding: '0 2px' }}>
-              ×
-            </button>
+        {/* Month nav */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <button onClick={prevMonth} disabled={!canPrev}
+            style={{ border: '0.5px solid var(--border)', background: canPrev ? 'var(--bg2)' : 'transparent', color: canPrev ? 'var(--text1)' : 'var(--text3)', borderRadius: 6, width: 28, height: 28, cursor: canPrev ? 'pointer' : 'default', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            ‹
+          </button>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)' }}>{MONTH_NAMES[month]}</div>
+            <div style={{ fontSize: 10, color: 'var(--text3)' }}>{year}</div>
           </div>
+          <button onClick={nextMonth} disabled={!canNext}
+            style={{ border: '0.5px solid var(--border)', background: canNext ? 'var(--bg2)' : 'transparent', color: canNext ? 'var(--text1)' : 'var(--text3)', borderRadius: 6, width: 28, height: 28, cursor: canNext ? 'pointer' : 'default', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            ›
+          </button>
+        </div>
 
-          {selectedEvents.length === 0 ? (
-            <div style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
-              No scheduled events
+        {/* Day-of-week headers */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 4 }}>
+          {DOW_LABELS.map(d => (
+            <div key={d} style={{ textAlign: 'center', fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text3)', padding: '2px 0' }}>
+              {d}
             </div>
-          ) : (
-            selectedEvents.map((ev, i) => (
+          ))}
+        </div>
+
+        {/* Date cells */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+          {cells.map((d, i) => {
+            if (!d) return <div key={`b${i}`} />
+            const iso     = isoDate(d)
+            const dayEvs  = byDate[iso] || []
+            const isToday = iso === todayIso
+            const isSel   = iso === selected
+            const isPast  = iso < todayIso
+            const isSun   = d.getDay() === 0
+            const isSat   = d.getDay() === 6
+
+            // pick the highest-impact event for the dot color
+            const topColor = dayEvs.length
+              ? (IMPACT_DOT[dayEvs[0].impact] || 'var(--text3)')
+              : null
+
+            return (
+              <div key={iso} onClick={() => setSelected(iso)}
+                style={{
+                  textAlign: 'center',
+                  borderRadius: 6,
+                  padding: '4px 2px 3px',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  background: isSel
+                    ? 'var(--text1)'
+                    : isToday
+                      ? 'var(--green)'
+                      : 'transparent',
+                  transition: 'background 0.12s',
+                  opacity: isPast && !isToday && !isSel ? 0.45 : 1,
+                }}
+                onMouseEnter={e => { if (!isSel && !isToday) e.currentTarget.style.background = 'var(--bg2)' }}
+                onMouseLeave={e => { if (!isSel && !isToday) e.currentTarget.style.background = 'transparent' }}
+              >
+                <div style={{
+                  fontSize: 11, fontWeight: isSel || isToday ? 600 : 400, lineHeight: 1.4,
+                  color: isSel || isToday ? 'var(--bg)' : isSun || isSat ? 'var(--text3)' : 'var(--text2)',
+                }}>
+                  {d.getDate()}
+                </div>
+                {/* Event dot — show only if has events */}
+                <div style={{ height: 4, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, marginTop: 1 }}>
+                  {dayEvs.length > 0 && (
+                    <span style={{
+                      width: 4, height: 4, borderRadius: '50%', display: 'inline-block',
+                      background: isSel || isToday ? 'rgba(255,255,255,0.75)' : topColor,
+                    }} />
+                  )}
+                  {dayEvs.length > 1 && (
+                    <span style={{
+                      width: 4, height: 4, borderRadius: '50%', display: 'inline-block',
+                      background: isSel || isToday ? 'rgba(255,255,255,0.5)' : (IMPACT_DOT[dayEvs[1].impact] || 'var(--text3)'),
+                    }} />
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Today button */}
+        {(year !== today.getFullYear() || month !== today.getMonth()) && (
+          <button onClick={goToday}
+            style={{ marginTop: 10, width: '100%', padding: '5px', fontSize: 10, cursor: 'pointer', borderRadius: 6, border: '0.5px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Today
+          </button>
+        )}
+
+        {/* Legend */}
+        <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: '4px 10px' }}>
+          {[
+            { label: 'Expiry',   color: 'var(--green)' },
+            { label: 'Watch',    color: 'var(--amber)' },
+            { label: 'High/Extreme', color: 'var(--red)' },
+          ].map(l => (
+            <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: 'var(--text3)' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: l.color, display: 'inline-block', flexShrink: 0 }} />
+              {l.label}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Right: event detail panel ──────────────────────────── */}
+      <div style={{ flex: 1, minWidth: 180 }}>
+        {/* Selected date header */}
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text1)' }}>
+            {selDateObj.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </div>
+          {selected === todayIso && (
+            <div style={{ fontSize: 10, color: 'var(--green)', marginTop: 1, fontWeight: 500 }}>Today</div>
+          )}
+        </div>
+
+        {selEvents.length === 0 ? (
+          <div style={{ borderRadius: 10, border: '0.5px solid var(--border)', padding: '24px 16px', textAlign: 'center', background: 'var(--bg2)' }}>
+            <div style={{ fontSize: 24, marginBottom: 6 }}>📅</div>
+            <div style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 500, marginBottom: 3 }}>No events scheduled</div>
+            <div style={{ fontSize: 11, color: 'var(--text3)' }}>Clean trading day — no macro data releases.</div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {selEvents.map((ev, i) => (
               <div key={i} style={{
-                padding: '12px 14px',
-                borderBottom: i < selectedEvents.length - 1 ? '0.5px solid var(--border)' : 'none',
-                display: 'flex', gap: 12, alignItems: 'flex-start',
+                borderRadius: 10,
+                border: '0.5px solid var(--border)',
+                overflow: 'hidden',
+                background: 'var(--bg2)',
               }}>
-                {/* Color bar */}
-                <div style={{ width: 3, borderRadius: 2, background: IMPACT_DOT[ev.impact] || 'var(--text3)', alignSelf: 'stretch', flexShrink: 0 }} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text1)' }}>{ev.event}</span>
-                    <span className={`badge ${impactBadge(ev.impact)}`}>{IMPACT_LABEL[ev.impact] || ev.impact}</span>
+                {/* Colored top bar */}
+                <div style={{ height: 3, background: IMPACT_DOT[ev.impact] || 'var(--text3)' }} />
+                <div style={{ padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)', lineHeight: 1.3, flex: 1, marginRight: 8 }}>{ev.event}</span>
+                    <span className={`badge ${impactBadge(ev.impact)}`} style={{ flexShrink: 0 }}>{IMPACT_LABEL[ev.impact] || ev.impact}</span>
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.6 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.65 }}>
                     {IMPACT_DESC[ev.impact] || ''}
                   </div>
                 </div>
               </div>
-            ))
-          )}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
+
     </div>
   )
 }
@@ -336,7 +430,7 @@ export default function HomeTab() {
 
       {/* Economic calendar */}
       <SectionTitle>Economic calendar</SectionTitle>
-      <WeeklyCalendar events={calendar || []} />
+      <MonthCalendar events={calendar || []} />
 
       {/* Market news */}
       {(data?.news || []).length > 0 && (

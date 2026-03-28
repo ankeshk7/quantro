@@ -297,7 +297,7 @@ export default function HomeTab() {
 
   return (
     <div>
-      {/* Kite connect banner — shown only when not connected */}
+      {/* Kite connect banner */}
       {!connected && (
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -316,22 +316,16 @@ export default function HomeTab() {
             </div>
           </div>
           {configured && (
-            <button
-              onClick={handleConnect}
-              disabled={connecting}
-              style={{
-                fontSize: 11, padding: '5px 14px', cursor: 'pointer', borderRadius: 6,
-                fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
-                background: '#EAF3DE', border: '0.5px solid #C0DD97', color: '#3B6D11',
-              }}>
+            <button onClick={handleConnect} disabled={connecting}
+              style={{ fontSize: 11, padding: '5px 14px', cursor: 'pointer', borderRadius: 6, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, background: '#EAF3DE', border: '0.5px solid #C0DD97', color: '#3B6D11' }}>
               {connecting ? 'Opening…' : 'Connect Kite →'}
             </button>
           )}
         </div>
       )}
 
-      {/* Index bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 0', marginBottom: 4, borderBottom: '0.5px solid var(--border)' }}>
+      {/* Index bar — full width above the two columns */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 0', marginBottom: 12, borderBottom: '0.5px solid var(--border)' }}>
         {[
           { label: 'NIFTY 50',   flash: niftyFlash, ...nifty },
           { label: 'Bank Nifty', flash: bankFlash,  ...banknifty },
@@ -350,74 +344,72 @@ export default function HomeTab() {
         ))}
       </div>
 
-      {/* Global pre-market */}
-      <SectionTitle>Global pre-market</SectionTitle>
-      <div className="stat-grid-3" style={{ marginBottom: 8 }}>
-        {[
-          {
-            label: 'GIFT Nifty', key: 'gift',
-            val: g?.gift_nifty?.value,
-            sub: g?.gift_nifty?.gap_pts != null
-              ? `gap ${g.gift_nifty.gap_pts >= 0 ? '+' : ''}${g.gift_nifty.gap_pts} pts`
-              : '—',
-            valColor: chgColor(g?.gift_nifty?.gap_pts),
-          },
-          { label: 'S&P 500',   key: 'sp', val: g?.sp500?.pct,   sub: 'US close',  valColor: chgColor(g?.sp500?.pct)  },
-          { label: 'Nasdaq',    key: 'nq', val: g?.nasdaq?.pct,  sub: 'US close',  valColor: chgColor(g?.nasdaq?.pct) },
-          { label: 'Crude Oil', key: 'cl', val: g?.crude?.pct,   sub: `$${fmt.round(g?.crude?.value)}`, valColor: chgColor(g?.crude?.pct) },
-          { label: 'USD/INR',   key: 'fx', val: g?.usdinr?.pct,  sub: `₹${fmt.round(g?.usdinr?.value)}`, valColor: chgColor(g?.usdinr?.pct) },
-          { label: 'Gold',      key: 'gc', val: g?.gold?.pct,    sub: g?.gold?.bias, valColor: chgColor(g?.gold?.pct) },
-        ].map(item => (
-          <StatCard
-            key={item.key}
-            label={item.label}
-            value={item.key === 'gift'
-              ? fmt.price(item.val)
-              : (typeof item.val === 'number' ? fmt.pct(item.val) : '—')}
-            sub={item.sub}
-            valueColor={item.valColor}
-          />
-        ))}
-      </div>
+      {/* Two-column layout: main content left, calendar sidebar right */}
+      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
 
-      {/* Sector pulse */}
-      <SectionTitle>Sector pulse</SectionTitle>
-      <div className="stat-grid-3" style={{ marginBottom: 8 }}>
-        {(sectors || []).map(s => (
-          <div key={s.sector} className="stat-card" style={{ textAlign: 'center', padding: '6px 8px' }}>
-            <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text3)', marginBottom: 2 }}>{s.sector}</div>
-            <div style={{ fontSize: 13, fontWeight: 500, fontFamily: 'var(--font-mono)', color: chgColor(s.change) }}>
-              {fmt.pct(s.change)}
-            </div>
+        {/* ── Left: main market data ───────────────────────────── */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+
+          {/* Global pre-market */}
+          <SectionTitle>Global pre-market</SectionTitle>
+          <div className="stat-grid-3" style={{ marginBottom: 8 }}>
+            {[
+              { label: 'GIFT Nifty', key: 'gift', val: g?.gift_nifty?.value,
+                sub: g?.gift_nifty?.gap_pts != null ? `gap ${g.gift_nifty.gap_pts >= 0 ? '+' : ''}${g.gift_nifty.gap_pts} pts` : '—',
+                valColor: chgColor(g?.gift_nifty?.gap_pts) },
+              { label: 'S&P 500',   key: 'sp', val: g?.sp500?.pct,  sub: 'US close', valColor: chgColor(g?.sp500?.pct)  },
+              { label: 'Nasdaq',    key: 'nq', val: g?.nasdaq?.pct, sub: 'US close', valColor: chgColor(g?.nasdaq?.pct) },
+              { label: 'Crude Oil', key: 'cl', val: g?.crude?.pct,  sub: `$${fmt.round(g?.crude?.value)}`, valColor: chgColor(g?.crude?.pct) },
+              { label: 'USD/INR',   key: 'fx', val: g?.usdinr?.pct, sub: `₹${fmt.round(g?.usdinr?.value)}`, valColor: chgColor(g?.usdinr?.pct) },
+              { label: 'Gold',      key: 'gc', val: g?.gold?.pct,   sub: g?.gold?.bias, valColor: chgColor(g?.gold?.pct) },
+            ].map(item => (
+              <StatCard key={item.key} label={item.label}
+                value={item.key === 'gift' ? fmt.price(item.val) : (typeof item.val === 'number' ? fmt.pct(item.val) : '—')}
+                sub={item.sub} valueColor={item.valColor} />
+            ))}
           </div>
-        ))}
+
+          {/* Sector pulse */}
+          <SectionTitle>Sector pulse</SectionTitle>
+          <div className="stat-grid-3" style={{ marginBottom: 8 }}>
+            {(sectors || []).map(s => (
+              <div key={s.sector} className="stat-card" style={{ textAlign: 'center', padding: '6px 8px' }}>
+                <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text3)', marginBottom: 2 }}>{s.sector}</div>
+                <div style={{ fontSize: 13, fontWeight: 500, fontFamily: 'var(--font-mono)', color: chgColor(s.change) }}>{fmt.pct(s.change)}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* FII / DII */}
+          <SectionTitle>FII / DII today</SectionTitle>
+          <div className="card" style={{ marginBottom: 8 }}>
+            <SignalRow label="FII net (futures)"
+              value={<span style={{ color: chgColor(fii_dii?.index_futures_net) }}>{fmt.inrSign(fii_dii?.index_futures_net)} Cr</span>}
+              badge={fii_dii?.bias} badgeClass={fii_dii?.bias === 'bullish' ? 'badge-green' : 'badge-red'} />
+            <SignalRow label="FII net (cash)"
+              value={<span style={{ color: chgColor(fii_dii?.cash_net_fii) }}>{fmt.inrSign(fii_dii?.cash_net_fii)} Cr</span>} />
+            <SignalRow label="DII net (cash)"
+              value={<span style={{ color: chgColor(fii_dii?.cash_net_dii) }}>{fmt.inrSign(fii_dii?.cash_net_dii)} Cr</span>} />
+          </div>
+
+          {/* Market news */}
+          {(data?.news || []).length > 0 && (
+            <>
+              <SectionTitle>Market news</SectionTitle>
+              {(data.news || []).map((n, i) => (
+                <NewsCard key={i} headline={n.title} source={n.source} sentiment={n.sentiment} url={n.url} />
+              ))}
+            </>
+          )}
+        </div>
+
+        {/* ── Right: calendar sidebar ──────────────────────────── */}
+        <div style={{ width: 260, flexShrink: 0 }}>
+          <SectionTitle style={{ marginTop: 0 }}>Economic calendar</SectionTitle>
+          <MonthCalendar events={calendar || []} />
+        </div>
+
       </div>
-
-      {/* FII / DII */}
-      <SectionTitle>FII / DII today</SectionTitle>
-      <div className="card" style={{ marginBottom: 8 }}>
-        <SignalRow label="FII net (futures)"
-          value={<span style={{ color: chgColor(fii_dii?.index_futures_net) }}>{fmt.inrSign(fii_dii?.index_futures_net)} Cr</span>}
-          badge={fii_dii?.bias} badgeClass={fii_dii?.bias === 'bullish' ? 'badge-green' : 'badge-red'} />
-        <SignalRow label="FII net (cash)"
-          value={<span style={{ color: chgColor(fii_dii?.cash_net_fii) }}>{fmt.inrSign(fii_dii?.cash_net_fii)} Cr</span>} />
-        <SignalRow label="DII net (cash)"
-          value={<span style={{ color: chgColor(fii_dii?.cash_net_dii) }}>{fmt.inrSign(fii_dii?.cash_net_dii)} Cr</span>} />
-      </div>
-
-      {/* Economic calendar */}
-      <SectionTitle>Economic calendar</SectionTitle>
-      <MonthCalendar events={calendar || []} />
-
-      {/* Market news */}
-      {(data?.news || []).length > 0 && (
-        <>
-          <SectionTitle>Market news</SectionTitle>
-          {(data.news || []).map((n, i) => (
-            <NewsCard key={i} headline={n.title} source={n.source} sentiment={n.sentiment} url={n.url} />
-          ))}
-        </>
-      )}
     </div>
   )
 }

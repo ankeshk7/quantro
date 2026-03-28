@@ -5,6 +5,169 @@ import { api } from '../../utils/api.js'
 import { fmt, chgColor, impactBadge } from '../../utils/formatters.js'
 import { StatCard, SectionTitle, Loading, ErrorMsg, SignalRow, NewsCard } from '../ui/index.jsx'
 
+// ── Weekly Calendar ───────────────────────────────────────────────────────────
+const IMPACT_DOT = {
+  extreme:   'var(--red)',
+  high:      'var(--red)',
+  watch:     'var(--amber)',
+  moderate:  'var(--amber)',
+  trade_day: 'var(--green)',
+  low:       'var(--text3)',
+  clear:     'var(--bg3)',
+}
+const IMPACT_LABEL = {
+  extreme:   'Extreme',
+  high:      'High',
+  watch:     'Watch',
+  moderate:  'Moderate',
+  trade_day: 'Trade day',
+  low:       'Low',
+  clear:     'Clear',
+}
+const IMPACT_DESC = {
+  extreme:   'Major macro event — expect large intraday moves. Consider sitting out.',
+  high:      'High-impact data release. Volatility likely around announcement time.',
+  watch:     'Worth watching. May cause moderate price swings.',
+  moderate:  'Moderate impact. Market may react briefly, likely to stabilise.',
+  trade_day: 'Weekly expiry day — premium decay accelerates sharply after 12 PM.',
+  low:       'Low expected impact on indices.',
+  clear:     'No major scheduled events today.',
+}
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+
+function isoDate(d) {
+  return d.toISOString().slice(0, 10)
+}
+
+function WeeklyCalendar({ events = [] }) {
+  const [weekOff, setWeekOff] = useState(0)
+  const [selected, setSelected] = useState(() => isoDate(new Date()))
+
+  // Monday of the displayed week
+  const today = new Date()
+  const monday = new Date(today)
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + weekOff * 7)
+
+  const days = Array.from({ length: 5 }, (_, i) => {
+    const d = new Date(monday)
+    d.setDate(monday.getDate() + i)
+    return d
+  })
+
+  const todayIso = isoDate(today)
+  const byDate   = {}
+  for (const ev of events) {
+    if (!byDate[ev.date]) byDate[ev.date] = []
+    byDate[ev.date].push(ev)
+  }
+
+  const selectedEvents = byDate[selected] || []
+  const weekLabel = `${days[0].toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })} – ${days[4].toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}`
+
+  return (
+    <div>
+      {/* Week nav */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <button onClick={() => setWeekOff(w => w - 1)}
+          style={{ border: '0.5px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 13 }}>
+          ‹
+        </button>
+        <span style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 500 }}>{weekLabel}</span>
+        <button onClick={() => setWeekOff(w => w + 1)}
+          style={{ border: '0.5px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 13 }}>
+          ›
+        </button>
+      </div>
+
+      {/* Day grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4, marginBottom: 10 }}>
+        {days.map((d, i) => {
+          const iso       = isoDate(d)
+          const dayEvs    = byDate[iso] || []
+          const isToday   = iso === todayIso
+          const isSel     = iso === selected
+          const isPast    = iso < todayIso
+
+          return (
+            <div key={iso} onClick={() => setSelected(isSel ? null : iso)}
+              style={{
+                cursor: 'pointer',
+                borderRadius: 10,
+                padding: '10px 6px 8px',
+                textAlign: 'center',
+                transition: 'all 0.15s',
+                border: `0.5px solid ${isSel ? 'var(--text2)' : isToday ? 'var(--green)' : 'var(--border)'}`,
+                background: isSel ? 'var(--bg3)' : isToday ? 'var(--bg2)' : 'var(--bg)',
+                opacity: isPast && !isToday ? 0.55 : 1,
+              }}
+              onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'var(--bg2)' }}
+              onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = isToday ? 'var(--bg2)' : 'var(--bg)' }}
+            >
+              <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.07em', color: isToday ? 'var(--green)' : 'var(--text3)', marginBottom: 3, fontWeight: isToday ? 600 : 400 }}>
+                {DAY_NAMES[i]}
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 500, fontFamily: 'var(--font-mono)', color: isToday ? 'var(--text1)' : 'var(--text2)', lineHeight: 1 }}>
+                {d.getDate()}
+              </div>
+              {/* Event dots */}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 3, marginTop: 6, minHeight: 7 }}>
+                {dayEvs.map((ev, j) => (
+                  <span key={j} style={{
+                    width: 6, height: 6, borderRadius: '50%', display: 'inline-block',
+                    background: IMPACT_DOT[ev.impact] || 'var(--text3)',
+                  }} />
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Event detail panel */}
+      {selected && (
+        <div style={{ borderRadius: 10, border: '0.5px solid var(--border)', overflow: 'hidden', background: 'var(--bg2)' }}>
+          {/* Panel header */}
+          <div style={{ padding: '8px 12px', borderBottom: '0.5px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text1)' }}>
+              {new Date(selected + 'T12:00:00').toLocaleDateString('en-IN', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </span>
+            <button onClick={() => setSelected(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 16, lineHeight: 1, padding: '0 2px' }}>
+              ×
+            </button>
+          </div>
+
+          {selectedEvents.length === 0 ? (
+            <div style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
+              No scheduled events
+            </div>
+          ) : (
+            selectedEvents.map((ev, i) => (
+              <div key={i} style={{
+                padding: '12px 14px',
+                borderBottom: i < selectedEvents.length - 1 ? '0.5px solid var(--border)' : 'none',
+                display: 'flex', gap: 12, alignItems: 'flex-start',
+              }}>
+                {/* Color bar */}
+                <div style={{ width: 3, borderRadius: 2, background: IMPACT_DOT[ev.impact] || 'var(--text3)', alignSelf: 'stretch', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text1)' }}>{ev.event}</span>
+                    <span className={`badge ${impactBadge(ev.impact)}`}>{IMPACT_LABEL[ev.impact] || ev.impact}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.6 }}>
+                    {IMPACT_DESC[ev.impact] || ''}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function usePriceFlash(price) {
   const prev  = useRef(null)
   const [cls, setCls] = useState(null)
@@ -172,14 +335,8 @@ export default function HomeTab() {
       </div>
 
       {/* Economic calendar */}
-      <SectionTitle>This week's events</SectionTitle>
-      {(calendar || []).map((ev, i) => (
-        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', background: 'var(--bg2)', borderRadius: 6, border: '0.5px solid var(--border)', marginBottom: 4 }}>
-          <span style={{ fontSize: 10, color: 'var(--text3)', minWidth: 60 }}>{ev.date?.slice(5)}</span>
-          <span style={{ fontSize: 12, color: 'var(--text1)', flex: 1, paddingLeft: 8 }}>{ev.event}</span>
-          <span className={`badge ${impactBadge(ev.impact)}`}>{ev.impact?.replace('_', ' ')}</span>
-        </div>
-      ))}
+      <SectionTitle>Economic calendar</SectionTitle>
+      <WeeklyCalendar events={calendar || []} />
 
       {/* Market news */}
       {(data?.news || []).length > 0 && (

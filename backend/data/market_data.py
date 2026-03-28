@@ -161,14 +161,14 @@ class MarketData:
             }
 
     def get_economic_calendar(self) -> list:
-        """This week's economic events."""
-        today      = date.today()
-        week_start = today - timedelta(days=today.weekday())
-        week_end   = week_start + timedelta(days=6)
-        return [
+        """Economic events for the next 4 weeks (from today onwards)."""
+        today   = date.today()
+        cutoff  = today + timedelta(days=28)
+        events  = [
             e for e in ECONOMIC_CALENDAR
-            if week_start.isoformat() <= e["date"] <= week_end.isoformat()
-        ] or ECONOMIC_CALENDAR[:5]
+            if today.isoformat() <= e["date"] <= cutoff.isoformat()
+        ]
+        return events if events else ECONOMIC_CALENDAR
 
     # ── Mock data ──────────────────────────────────────────────────────────────
 

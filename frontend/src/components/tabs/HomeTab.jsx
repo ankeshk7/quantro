@@ -324,31 +324,31 @@ export default function HomeTab() {
         </div>
       )}
 
-      {/* Index bar — full width above the two columns */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 0', marginBottom: 12, borderBottom: '0.5px solid var(--border)' }}>
-        {[
-          { label: 'NIFTY 50',   flash: niftyFlash, ...nifty },
-          { label: 'Bank Nifty', flash: bankFlash,  ...banknifty },
-          { label: 'India VIX',  flash: vixFlash,   ...vix },
-        ].map(idx => (
-          <div key={idx.label}>
-            <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text3)', marginBottom: 2 }}>{idx.label}</div>
-            <div className={idx.flash || ''} style={{ fontSize: 22, fontWeight: 500, fontFamily: 'var(--font-mono)', color: 'var(--text1)', transition: 'color 0.1s', display: 'inline-block' }}>
-              {fmt.price(idx.price || idx.value)}
-            </div>
-            <div style={{ fontSize: 11, color: chgColor(idx.pct ?? idx.change) }}>
-              {(idx.pct ?? 0) >= 0 ? '▲' : '▼'} {Number(Math.abs(idx.pct ?? 0)).toFixed(2)}%
-              {tickerLive && <span style={{ marginLeft: 4, display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: 'var(--green)', verticalAlign: 'middle', animation: 'pulse 1s infinite' }} />}
-            </div>
-          </div>
-        ))}
-      </div>
-
       {/* Two-column layout: main content left, calendar sidebar right */}
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
 
         {/* ── Left: main market data ───────────────────────────── */}
         <div style={{ flex: 1, minWidth: 0 }}>
+
+          {/* Index bar */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 0', marginBottom: 8, borderBottom: '0.5px solid var(--border)' }}>
+            {[
+              { label: 'NIFTY 50',   flash: niftyFlash, ...nifty },
+              { label: 'Bank Nifty', flash: bankFlash,  ...banknifty },
+              { label: 'India VIX',  flash: vixFlash,   ...vix },
+            ].map(idx => (
+              <div key={idx.label}>
+                <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text3)', marginBottom: 2 }}>{idx.label}</div>
+                <div className={idx.flash || ''} style={{ fontSize: 22, fontWeight: 500, fontFamily: 'var(--font-mono)', color: 'var(--text1)', transition: 'color 0.1s', display: 'inline-block' }}>
+                  {fmt.price(idx.price || idx.value)}
+                </div>
+                <div style={{ fontSize: 11, color: chgColor(idx.pct ?? idx.change) }}>
+                  {(idx.pct ?? 0) >= 0 ? '▲' : '▼'} {Number(Math.abs(idx.pct ?? 0)).toFixed(2)}%
+                  {tickerLive && <span style={{ marginLeft: 4, display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: 'var(--green)', verticalAlign: 'middle', animation: 'pulse 1s infinite' }} />}
+                </div>
+              </div>
+            ))}
+          </div>
 
           {/* Global pre-market */}
           <SectionTitle>Global pre-market</SectionTitle>

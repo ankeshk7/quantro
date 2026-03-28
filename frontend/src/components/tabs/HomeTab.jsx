@@ -1,9 +1,26 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useApi } from '../../hooks/useApi.js'
 import { useTicker, useTickerConnected } from '../../hooks/useTicker.js'
 import { api } from '../../utils/api.js'
 import { fmt, chgColor, impactBadge } from '../../utils/formatters.js'
 import { StatCard, SectionTitle, Loading, ErrorMsg, SignalRow } from '../ui/index.jsx'
+
+function usePriceFlash(price) {
+  const prev  = useRef(null)
+  const [cls, setCls] = useState(null)
+  useEffect(() => {
+    if (price == null) return
+    if (prev.current !== null && price !== prev.current) {
+      const dir = price > prev.current ? 'flash-up' : 'flash-down'
+      setCls(dir)
+      const t = setTimeout(() => setCls(null), 900)
+      prev.current = price
+      return () => clearTimeout(t)
+    }
+    prev.current = price
+  }, [price])
+  return cls
+}
 
 export default function HomeTab() {
   const { data, loading, error } = useApi(() => api.home(), [], 'home')
@@ -15,6 +32,10 @@ export default function HomeTab() {
   const niftyLtp = useTicker('NIFTY 50')
   const bankLtp  = useTicker('NIFTY BANK')
   const vixLtp   = useTicker('INDIA VIX')
+
+  const niftyFlash = usePriceFlash(niftyLtp)
+  const bankFlash  = usePriceFlash(bankLtp)
+  const vixFlash   = usePriceFlash(vixLtp)
 
   const kite       = kiteStatus.data
   const configured = kite?.configured
@@ -78,13 +99,13 @@ export default function HomeTab() {
       {/* Index bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 0', marginBottom: 4, borderBottom: '0.5px solid var(--border)' }}>
         {[
-          { label: 'NIFTY 50',   ...nifty },
-          { label: 'Bank Nifty', ...banknifty },
-          { label: 'India VIX',  ...vix },
+          { label: 'NIFTY 50',   flash: niftyFlash, ...nifty },
+          { label: 'Bank Nifty', flash: bankFlash,  ...banknifty },
+          { label: 'India VIX',  flash: vixFlash,   ...vix },
         ].map(idx => (
           <div key={idx.label}>
             <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text3)', marginBottom: 2 }}>{idx.label}</div>
-            <div style={{ fontSize: 22, fontWeight: 500, fontFamily: 'var(--font-mono)', color: 'var(--text1)', transition: 'color 0.1s' }}>
+            <div className={idx.flash || ''} style={{ fontSize: 22, fontWeight: 500, fontFamily: 'var(--font-mono)', color: 'var(--text1)', transition: 'color 0.1s', display: 'inline-block' }}>
               {fmt.price(idx.price || idx.value)}
             </div>
             <div style={{ fontSize: 11, color: chgColor(idx.pct ?? idx.change) }}>

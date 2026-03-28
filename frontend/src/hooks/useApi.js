@@ -18,28 +18,31 @@ export function prefetch(key, fetcher) {
   }).catch(() => {})  // silent — tab will retry on mount
 }
 
-function _getCached(key) {
+function _getCachedEntry(key) {
   if (!key) return null
   const entry = _cache.get(key)
-  if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.data
+  if (entry && Date.now() - entry.ts < CACHE_TTL) return entry
   return null
 }
 
 export function useApi(fetcher, deps = [], cacheKey = null) {
-  const cached = _getCached(cacheKey)
-  const [data,    setData]    = useState(cached)
-  const [loading, setLoading] = useState(cached === null)
-  const [error,   setError]   = useState(null)
+  const entry = _getCachedEntry(cacheKey)
+  const [data,        setData]        = useState(entry?.data ?? null)
+  const [loading,     setLoading]     = useState(entry === null)
+  const [error,       setError]       = useState(null)
+  const [lastUpdated, setLastUpdated] = useState(entry?.ts ?? null)
 
-  const load = useCallback(async () => {
-    const hit = _getCached(cacheKey)
-    if (hit !== null) { setData(hit); setLoading(false); return }
+  const load = useCallback(async (force = false) => {
+    const hit = _getCachedEntry(cacheKey)
+    if (!force && hit !== null) { setData(hit.data); setLastUpdated(hit.ts); setLoading(false); return }
     setLoading(true)
     setError(null)
     try {
       const result = await fetcher()
-      if (cacheKey) _cache.set(cacheKey, { data: result, ts: Date.now() })
+      const ts = Date.now()
+      if (cacheKey) _cache.set(cacheKey, { data: result, ts })
       setData(result)
+      setLastUpdated(ts)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -49,5 +52,10 @@ export function useApi(fetcher, deps = [], cacheKey = null) {
 
   useEffect(() => { load() }, [load])
 
-  return { data, loading, error, reload: load }
+  const refresh = useCallback(() => {
+    if (cacheKey) _cache.delete(cacheKey)
+    load(true)
+  }, [cacheKey, load])
+
+  return { data, loading, error, reload: load, refresh, lastUpdated }
 }

@@ -4,6 +4,25 @@ import { api } from '../../utils/api.js'
 import { fmt, chgColor } from '../../utils/formatters.js'
 import { StatCard, SectionTitle, Loading, ErrorMsg, ProgressBar } from '../ui/index.jsx'
 
+function useRelativeTime(ts) {
+  const [label, setLabel] = useState('')
+  useEffect(() => {
+    const compute = () => {
+      if (!ts) { setLabel(''); return }
+      const secs = Math.round((Date.now() - ts) / 1000)
+      if (secs < 10)  { setLabel('just now'); return }
+      if (secs < 60)  { setLabel(`${secs}s ago`); return }
+      const mins = Math.floor(secs / 60)
+      if (mins < 60)  { setLabel(`${mins}m ago`); return }
+      setLabel(`${Math.floor(mins / 60)}h ago`)
+    }
+    compute()
+    const id = setInterval(compute, 15000)
+    return () => clearInterval(id)
+  }, [ts])
+  return label
+}
+
 // ── Scanner ───────────────────────────────────────────────────────────────────
 
 const FILTERS = [
@@ -23,7 +42,9 @@ const SORTS = [
 export function ScannerTab({ onViewTicker }) {
   const [filter, setFilter] = useState('all')
   const [sort,   setSort]   = useState('confidence')
-  const { data, loading, error } = useApi(() => api.scanner(filter), [filter], `scanner-${filter}`)
+  const [search, setSearch] = useState('')
+  const { data, loading, error, refresh, lastUpdated } = useApi(() => api.scanner(filter), [filter], `scanner-${filter}`)
+  const updatedLabel = useRelativeTime(lastUpdated)
 
   const badgeCls = (strategy) => {
     if (strategy === 'Skip') return 'badge-red'
@@ -33,33 +54,52 @@ export function ScannerTab({ onViewTicker }) {
     return 'badge-gray'
   }
 
-  const sorted = [...(data || [])].sort((a, b) => {
-    if (sort === 'confidence') return (b.confidence ?? 0) - (a.confidence ?? 0)
-    if (sort === 'change')     return Math.abs(b.change ?? 0) - Math.abs(a.change ?? 0)
-    if (sort === 'ivr')        return (b.ivr ?? 0) - (a.ivr ?? 0)
-    return 0
-  })
+  const sorted = [...(data || [])]
+    .filter(s => !search || s.symbol?.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      if (sort === 'confidence') return (b.confidence ?? 0) - (a.confidence ?? 0)
+      if (sort === 'change')     return Math.abs(b.change ?? 0) - Math.abs(a.change ?? 0)
+      if (sort === 'ivr')        return (b.ivr ?? 0) - (a.ivr ?? 0)
+      return 0
+    })
 
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)', marginBottom: 2 }}>F&O Scanner</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>Click any stock to open the full Ticker analysis</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+            Click any stock to open Ticker analysis
+            {updatedLabel && <span style={{ marginLeft: 6, color: 'var(--text3)' }}>· {updatedLabel}</span>}
+          </div>
         </div>
-        {/* Sort */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sort</span>
-          {SORTS.map(s => (
-            <button key={s.key} onClick={() => setSort(s.key)}
-              style={{ padding: '3px 9px', fontSize: 10, fontWeight: 500, cursor: 'pointer', borderRadius: 4,
-                background: sort === s.key ? 'var(--text1)' : 'var(--bg2)',
-                color:      sort === s.key ? 'var(--bg)'    : 'var(--text3)',
-                border: '0.5px solid var(--border)', transition: 'all 0.12s' }}>
-              {s.label}
-            </button>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          {/* Search */}
+          <input
+            value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search symbol…"
+            style={{ padding: '4px 9px', fontSize: 11, background: 'var(--bg2)', border: '0.5px solid var(--border)',
+              borderRadius: 6, color: 'var(--text1)', width: 130, outline: 'none' }} />
+          {/* Refresh */}
+          <button onClick={refresh} disabled={loading}
+            style={{ padding: '4px 10px', fontSize: 10, cursor: loading ? 'default' : 'pointer', borderRadius: 6,
+              background: 'var(--bg2)', border: '0.5px solid var(--border)', color: 'var(--text2)', opacity: loading ? 0.5 : 1 }}>
+            {loading ? '…' : '↺ Refresh'}
+          </button>
+          {/* Sort */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sort</span>
+            {SORTS.map(s => (
+              <button key={s.key} onClick={() => setSort(s.key)}
+                style={{ padding: '3px 9px', fontSize: 10, fontWeight: 500, cursor: 'pointer', borderRadius: 4,
+                  background: sort === s.key ? 'var(--text1)' : 'var(--bg2)',
+                  color:      sort === s.key ? 'var(--bg)'    : 'var(--text3)',
+                  border: '0.5px solid var(--border)', transition: 'all 0.12s' }}>
+                {s.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

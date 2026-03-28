@@ -47,11 +47,38 @@ function useTheme() {
 const THEME_CYCLE = { auto: 'light', light: 'dark', dark: 'auto' }
 const THEME_LABEL = { auto: '⬤ Auto', light: '☀ Light', dark: '☽ Dark' }
 
-export default function App() {
+// ── Market status ─────────────────────────────────────────────────────────────
+function getMarketStatus() {
+  const now = new Date()
+  const ist = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
+  const day  = ist.getDay()
+  const mins = ist.getHours() * 60 + ist.getMinutes()
+  if (day === 0 || day === 6) return { open: false, label: 'Closed', sub: 'Weekend' }
+  if (mins >= 9 * 60 + 15 && mins < 15 * 60 + 30) {
+    const rem = 15 * 60 + 30 - mins
+    return { open: true, label: 'Live', sub: `Closes in ${Math.floor(rem / 60)}h ${rem % 60}m` }
+  }
+  if (mins >= 9 * 60 && mins < 9 * 60 + 15) {
+    return { open: false, label: 'Pre-open', sub: `Opens in ${9 * 60 + 15 - mins}m` }
+  }
+  return { open: false, label: 'Closed', sub: 'Opens 9:15 IST' }
+}
+
+function useMarketStatus() {
+  const [status, setStatus] = useState(getMarketStatus)
+  useEffect(() => {
+    const id = setInterval(() => setStatus(getMarketStatus()), 60000)
+    return () => clearInterval(id)
+  }, [])
+  return status
+}
+
+function App() {
   const [active,         setActive]         = useState('home')
   const [tickerSymbol,   setTickerSymbol]   = useState(null)
   const [positionsCount, setPositionsCount] = useState(null)
   const [theme,          setTheme]          = useTheme()
+  const market = useMarketStatus()
 
   const goToTicker = (symbol) => {
     setTickerSymbol(symbol)
@@ -136,11 +163,16 @@ export default function App() {
       : t
   )
 
+  const vixColor = vix == null ? 'var(--text2)' : vix > 20 ? 'var(--red)' : vix > 16 ? 'var(--amber)' : 'var(--green)'
+
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto', padding: '0 24px 40px' }}>
 
+      {/* Sticky top bar + tab nav wrapper */}
+      <div className="sticky-header" style={{ marginLeft: -24, marginRight: -24, padding: '0 24px' }}>
+
       {/* Top bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0 0', borderBottom: '0.5px solid var(--border)', marginBottom: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0 0', marginBottom: 0 }}>
         {/* QUANTRO wordmark — V3: geometric Q with extended tail */}
         <div style={{ display: 'flex', alignItems: 'center', color: 'var(--text1)' }}>
           <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg"
@@ -154,13 +186,21 @@ export default function App() {
             UANTRO
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ fontSize: 10, padding: '3px 8px', borderRadius: 20, border: '0.5px solid var(--border)', color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: tickerConnected ? 'var(--green)' : 'var(--amber)', display: 'inline-block' }} />
-            {tickerConnected ? 'Kite Live' : 'NSE Live'}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* Market status */}
+          <div title={market.sub} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 20, border: '0.5px solid var(--border)', color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 4, cursor: 'default' }}>
+            <span className={market.open ? 'market-open-dot' : ''}
+              style={{ width: 6, height: 6, borderRadius: '50%', background: market.open ? 'var(--green)' : 'var(--text3)', display: 'inline-block', flexShrink: 0 }} />
+            {market.label}
           </div>
-          <div style={{ fontSize: 10, padding: '3px 8px', borderRadius: 20, border: '0.5px solid var(--border)', color: 'var(--text2)', fontFamily: 'var(--font-mono)' }}>
-            VIX {vix ?? '—'}
+          {/* Feed status */}
+          <div style={{ fontSize: 10, padding: '3px 8px', borderRadius: 20, border: '0.5px solid var(--border)', color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: tickerConnected ? 'var(--green)' : 'var(--amber)', display: 'inline-block', flexShrink: 0 }} />
+            {tickerConnected ? 'Kite' : 'NSE'}
+          </div>
+          {/* VIX — colored by level */}
+          <div style={{ fontSize: 10, padding: '3px 8px', borderRadius: 20, border: '0.5px solid var(--border)', color: vixColor, fontFamily: 'var(--font-mono)', fontWeight: 500 }}>
+            VIX {vix != null ? Number(vix).toFixed(2) : '—'}
           </div>
           <button
             onClick={() => setTheme(THEME_CYCLE[theme])}
@@ -172,7 +212,7 @@ export default function App() {
       </div>
 
       {/* Tab nav */}
-      <div style={{ display: 'flex', gap: 2, paddingTop: 8, overflowX: 'auto', borderBottom: '0.5px solid var(--border)', scrollbarWidth: 'none' }}>
+      <div style={{ display: 'flex', gap: 2, paddingTop: 6, overflowX: 'auto', borderBottom: '0.5px solid var(--border)', scrollbarWidth: 'none' }}>
         {TABS.map(tab => (
           <button
             key={tab.id}
@@ -208,6 +248,8 @@ export default function App() {
           </button>
         ))}
       </div>
+
+      </div>{/* end sticky-header */}
 
       {/* Content — key forces fade-in animation on tab switch */}
       <div key={active} className="tab-content main-content" style={{ paddingTop: '1rem' }}>

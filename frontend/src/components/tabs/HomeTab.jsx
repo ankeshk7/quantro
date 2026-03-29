@@ -271,13 +271,12 @@ export default function HomeTab() {
           <div className="stat-grid-3" style={{ marginBottom: 8 }}>
             {(sectors || []).map(s => {
               const hasData = s.change != null
-              const big     = hasData && Math.abs(s.change) >= 1.5
-              const small   = hasData && !big && Math.abs(s.change) >= 0.3
-              const badgeLabel = big ? (s.change > 0 ? 'Strong' : 'Weak') : small ? (s.change > 0 ? '↑' : '↓') : null
+              const big        = hasData && Math.abs(s.change) >= 1.5
+              const badgeLabel = hasData && Math.abs(s.change) >= 0.3 ? (s.change > 0 ? (big ? 'Strong' : 'Bullish') : (big ? 'Weak' : 'Bearish')) : null
               return (
                 <div key={s.sector} className="stat-card" style={{ padding: '6px 8px', position: 'relative' }}>
                   {badgeLabel && (
-                    <span style={{ position: 'absolute', top: 5, right: 7, fontSize: big ? 7 : 9, fontWeight: 700, color: chgColor(s.change), textTransform: 'uppercase', letterSpacing: big ? '0.04em' : 0 }}>
+                    <span style={{ position: 'absolute', top: 5, right: 7, fontSize: 7, fontWeight: 700, color: chgColor(s.change), textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       {badgeLabel}
                     </span>
                   )}

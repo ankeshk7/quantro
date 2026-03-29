@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
@@ -65,7 +66,27 @@ logging.getLogger("urllib3").setLevel(logging.CRITICAL)
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", message=".*possibly delisted.*")
 
-app = FastAPI(title="QUANTRO API", version="1.0.0", default_response_class=NumpyJSONResponse)
+nse     = NSEData()
+market  = MarketData()
+news    = NewsFetcher()
+scorer  = SentimentScorer()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup: warm caches. Shutdown: stop ticker."""
+    pair = kite_data.get_any_valid_token()
+    if pair:
+        print("[startup] Kite session found — starting ticker")
+        kite_ticker.start(pair[0], pair[1])
+    asyncio.create_task(_warm_expiry_cache())
+    asyncio.get_event_loop().run_in_executor(None, nse.search, "NIFTY")
+    yield
+    kite_ticker.stop()
+
+
+app = FastAPI(title="QUANTRO API", version="1.0.0",
+              default_response_class=NumpyJSONResponse, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -78,28 +99,6 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=True,
 )
-
-nse     = NSEData()
-market  = MarketData()
-news    = NewsFetcher()
-scorer  = SentimentScorer()
-
-
-@app.on_event("startup")
-async def startup():
-    """Auto-start Kite ticker and pre-warm the expiry signal cache in background."""
-    pair = kite_data.get_any_valid_token()
-    if pair:
-        print("[startup] Kite session found — starting ticker")
-        kite_ticker.start(pair[0], pair[1])
-    # Pre-warm symbol list and expiry signal so first requests are instant
-    asyncio.create_task(_warm_expiry_cache())
-    asyncio.get_event_loop().run_in_executor(None, nse.search, "NIFTY")  # triggers symbol list download
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    kite_ticker.stop()
 
 TRADES_FILE = os.path.join(os.path.dirname(__file__), "../data/trades.json")
 

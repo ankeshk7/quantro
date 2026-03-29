@@ -171,11 +171,18 @@ def _load_fo_lot_sizes() -> dict:
             if not sym or sym == "SYMBOL":
                 continue
             # Pick first non-empty, non-zero numeric value across month columns
+            # Use float() then int() to handle "500", "500.0", "1,500" etc.
             for cell in row[1:]:
-                val = cell.strip().replace(",", "")
-                if val.isdigit() and int(val) > 0:
-                    result[sym] = int(val)
-                    break
+                val = cell.strip().replace(",", "").replace(" ", "")
+                if not val:
+                    continue
+                try:
+                    num = int(float(val))
+                    if num > 0:
+                        result[sym] = num
+                        break
+                except (ValueError, TypeError):
+                    continue
         if result:
             _FO_LOTS_CACHE["data"] = result
             _FO_LOTS_CACHE["ts"]   = now

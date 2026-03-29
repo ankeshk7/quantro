@@ -126,9 +126,13 @@ export default function HomeTab() {
 
   // ── Market bias roll-up ───────────────────────────────────────────────────
   const biasVotes = []
-  if (vix?.price != null) biasVotes.push(vix.price > 20 ? -1 : vix.price < 16 ? 1 : 0)
+  // VIX: use daily pct change direction — falling VIX = fear easing = bullish (+1),
+  // rising VIX = fear building = bearish (-1). Matches index bar arrow direction.
+  const vixPct = vix?.pct ?? vix?.change
+  if (vixPct != null) biasVotes.push(vixPct < -1 ? 1 : vixPct > 1 ? -1 : 0)
   if (fii_dii?.index_futures_net != null) biasVotes.push(fii_dii.index_futures_net > 0 ? 1 : -1)
-  if (g?.gift_nifty?.gap_pts != null) biasVotes.push(g.gift_nifty.gap_pts > 30 ? 1 : g.gift_nifty.gap_pts < -30 ? -1 : 0)
+  // GIFT: ±10 pts threshold — any meaningful gap counts, not just ±30
+  if (g?.gift_nifty?.gap_pts != null) biasVotes.push(g.gift_nifty.gap_pts > 10 ? 1 : g.gift_nifty.gap_pts < -10 ? -1 : 0)
   const greenSectors = (sectors || []).filter(s => s.change != null && s.change > 0).length
   const redSectors   = (sectors || []).filter(s => s.change != null && s.change < 0).length
   if (sectors?.length) biasVotes.push(greenSectors > redSectors ? 1 : greenSectors < redSectors ? -1 : 0)
@@ -182,21 +186,26 @@ export default function HomeTab() {
           {/* Index bar */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 0', marginBottom: 8, borderBottom: '0.5px solid var(--border)' }}>
             {[
-              { label: 'NIFTY 50',   flash: niftyFlash, ...nifty },
-              { label: 'Bank Nifty', flash: bankFlash,  ...banknifty },
-              { label: 'India VIX',  flash: vixFlash,   ...vix },
-            ].map(idx => (
-              <div key={idx.label}>
-                <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text3)', marginBottom: 2 }}>{idx.label}</div>
-                <div className={idx.flash || ''} style={{ fontSize: 22, fontWeight: 500, fontFamily: 'var(--font-mono)', color: 'var(--text1)', transition: 'color 0.1s', display: 'inline-block' }}>
-                  {fmt.price(idx.price || idx.value)}
+              { label: 'NIFTY 50',   flash: niftyFlash, isVix: false, ...nifty },
+              { label: 'Bank Nifty', flash: bankFlash,  isVix: false, ...banknifty },
+              { label: 'India VIX',  flash: vixFlash,   isVix: true,  ...vix },
+            ].map(idx => {
+              const pct = idx.pct ?? idx.change ?? 0
+              // VIX is inverse: falling VIX = bullish (green), rising VIX = bearish (red)
+              const pctColor = chgColor(idx.isVix ? -pct : pct)
+              return (
+                <div key={idx.label}>
+                  <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text3)', marginBottom: 2 }}>{idx.label}</div>
+                  <div className={idx.flash || ''} style={{ fontSize: 22, fontWeight: 500, fontFamily: 'var(--font-mono)', color: 'var(--text1)', transition: 'color 0.1s', display: 'inline-block' }}>
+                    {fmt.price(idx.price || idx.value)}
+                  </div>
+                  <div style={{ fontSize: 11, color: pctColor }}>
+                    {pct >= 0 ? '▲' : '▼'} {Math.abs(pct).toFixed(2)}%
+                    {tickerLive && <span style={{ marginLeft: 4, display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: 'var(--green)', verticalAlign: 'middle', animation: 'pulse 1s infinite' }} />}
+                  </div>
                 </div>
-                <div style={{ fontSize: 11, color: chgColor(idx.pct ?? idx.change) }}>
-                  {(idx.pct ?? 0) >= 0 ? '▲' : '▼'} {Number(Math.abs(idx.pct ?? 0)).toFixed(2)}%
-                  {tickerLive && <span style={{ marginLeft: 4, display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: 'var(--green)', verticalAlign: 'middle', animation: 'pulse 1s infinite' }} />}
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           {/* Market bias summary */}
@@ -208,9 +217,9 @@ export default function HomeTab() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
               {[
-                { label: 'VIX',     vote: vix?.price != null ? (vix.price > 20 ? -1 : vix.price < 16 ? 1 : 0) : null },
+                { label: 'VIX',     vote: vixPct != null ? (vixPct < -1 ? 1 : vixPct > 1 ? -1 : 0) : null },
                 { label: 'FII',     vote: fii_dii?.index_futures_net != null ? (fii_dii.index_futures_net > 0 ? 1 : -1) : null },
-                { label: 'GIFT',    vote: g?.gift_nifty?.gap_pts != null ? (g.gift_nifty.gap_pts > 30 ? 1 : g.gift_nifty.gap_pts < -30 ? -1 : 0) : null },
+                { label: 'GIFT',    vote: g?.gift_nifty?.gap_pts != null ? (g.gift_nifty.gap_pts > 10 ? 1 : g.gift_nifty.gap_pts < -10 ? -1 : 0) : null },
                 { label: 'Sectors', vote: sectors?.length ? (greenSectors > redSectors ? 1 : greenSectors < redSectors ? -1 : 0) : null },
               ].map(({ label, vote }) => (
                 <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 9 }}>

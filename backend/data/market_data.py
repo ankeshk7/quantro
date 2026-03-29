@@ -11,20 +11,53 @@ import time
 
 
 TICKERS = {
-    "sp500":    "^GSPC",
-    "dow":      "^DJI",
-    "nasdaq":   "^IXIC",
+    "sp500":    "SPY",      # ETF proxy — ^GSPC unreliable on weekends via batch
+    "dow":      "DIA",      # ETF proxy — ^DJI same issue
+    "nasdaq":   "QQQ",      # ETF proxy — ^IXIC same issue
     "vix_us":   "^VIX",
     "crude":    "CL=F",
     "gold":     "GC=F",
-    "usdinr":   "USDINR=X",
+    "usdinr":   "INR=X",    # USDINR=X often returns empty; INR=X is reliable
     "us10y":    "^TNX",
     "nikkei":   "^N225",
     "hangseng": "^HSI",
 }
 
+# Conversion factors for ETF proxies → index points (approx multipliers)
+_ETF_TO_INDEX = {
+    "sp500":  8.85,    # SPY ≈ S&P 500 / 8.85
+    "dow":    311.0,   # DIA ≈ Dow / 311
+    "nasdaq": 50.0,    # QQQ ≈ Nasdaq / 50 (rough)
+    "usdinr": 1.0,     # INR=X is already USD per INR — we invert below
+}
+
 # Static high-impact macro events (updated periodically)
 _MACRO_EVENTS = [
+    # ── NSE Holidays 2026 ────────────────────────────────────────────────────────
+    {"date": "2026-01-26", "event": "NSE Closed — Republic Day",            "impact": "nse_holiday"},
+    {"date": "2026-02-26", "event": "NSE Closed — Maha Shivaratri",         "impact": "nse_holiday"},
+    {"date": "2026-03-18", "event": "NSE Closed — Holi",                    "impact": "nse_holiday"},
+    {"date": "2026-04-02", "event": "NSE Closed — Ramzan Id (Eid ul Fitr)", "impact": "nse_holiday"},
+    {"date": "2026-04-03", "event": "NSE Closed — Good Friday",             "impact": "nse_holiday"},
+    {"date": "2026-04-14", "event": "NSE Closed — Dr. Ambedkar Jayanti",    "impact": "nse_holiday"},
+    {"date": "2026-05-01", "event": "NSE Closed — Maharashtra Day",         "impact": "nse_holiday"},
+    {"date": "2026-08-15", "event": "NSE Closed — Independence Day",        "impact": "nse_holiday"},
+    {"date": "2026-10-02", "event": "NSE Closed — Gandhi Jayanti",          "impact": "nse_holiday"},
+    {"date": "2026-10-19", "event": "NSE Closed — Diwali (Laxmi Puja)",     "impact": "nse_holiday"},
+    {"date": "2026-10-20", "event": "NSE Closed — Diwali (Balipratipada)",  "impact": "nse_holiday"},
+    {"date": "2026-11-24", "event": "NSE Closed — Gurunanak Jayanti",       "impact": "nse_holiday"},
+    {"date": "2026-12-25", "event": "NSE Closed — Christmas",               "impact": "nse_holiday"},
+    # ── US Market Holidays 2026 (NYSE) ──────────────────────────────────────────
+    {"date": "2026-01-01", "event": "NYSE Closed — New Year's Day",         "impact": "us_holiday"},
+    {"date": "2026-01-19", "event": "NYSE Closed — MLK Day",                "impact": "us_holiday"},
+    {"date": "2026-02-16", "event": "NYSE Closed — Presidents' Day",        "impact": "us_holiday"},
+    {"date": "2026-04-03", "event": "NYSE Closed — Good Friday",            "impact": "us_holiday"},
+    {"date": "2026-05-25", "event": "NYSE Closed — Memorial Day",           "impact": "us_holiday"},
+    {"date": "2026-06-19", "event": "NYSE Closed — Juneteenth",             "impact": "us_holiday"},
+    {"date": "2026-07-03", "event": "NYSE Closed — Independence Day (obs)", "impact": "us_holiday"},
+    {"date": "2026-09-07", "event": "NYSE Closed — Labor Day",              "impact": "us_holiday"},
+    {"date": "2026-11-26", "event": "NYSE Closed — Thanksgiving",           "impact": "us_holiday"},
+    {"date": "2026-12-25", "event": "NYSE Closed — Christmas",              "impact": "us_holiday"},
     # ── March 2026 ──────────────────────────────────────────────────────────────
     {"date": "2026-03-12", "event": "India CPI (Feb)",           "impact": "moderate"},
     {"date": "2026-03-14", "event": "India WPI (Feb)",           "impact": "low"},
@@ -97,7 +130,7 @@ def _weekly_expiry_tuesdays(from_date: "date", days: int = 365) -> list:
 ECONOMIC_CALENDAR = _MACRO_EVENTS
 
 _GLOBAL_CACHE: dict = {"data": None, "ts": 0.0}
-_CACHE_TTL = 300  # 5 minutes
+_CACHE_TTL = 300  # 5 minutes — matches frontend poll interval
 
 
 class MarketData:
@@ -111,10 +144,10 @@ class MarketData:
         result = {}
         try:
             symbols = list(TICKERS.values())
-            # Single network call for all tickers
+            # Use 5d to guarantee 2+ trading days even after weekends/holidays
             raw = yf.download(
                 tickers=symbols,
-                period="2d",
+                period="5d",
                 interval="1d",
                 group_by="ticker",
                 auto_adjust=True,
@@ -133,11 +166,31 @@ class MarketData:
                         curr = float(close.iloc[-1])
                         chg  = round(curr - prev, 2)
                         pct  = round((chg / prev) * 100, 2) if prev else 0.0
+                        # INR=X gives USD-per-INR (e.g. 0.01185); invert to get INR-per-USD
+                        display_val = curr
+                        display_chg = chg
+                        if key == "usdinr" and curr < 5:
+                            display_val = round(1.0 / curr, 2)
+                            prev_inv    = 1.0 / prev if prev else display_val
+                            display_chg = round(display_val - prev_inv, 2)
+                            pct         = round((display_chg / prev_inv) * 100, 2) if prev_inv else 0.0
                         result[key] = {
-                            "value":  round(curr, 2),
-                            "change": chg,
+                            "value":  round(display_val, 2),
+                            "change": display_chg,
                             "pct":    pct,
                             "bias":   "bullish" if pct > 0.3 else "bearish" if pct < -0.3 else "neutral",
+                        }
+                    elif len(close) == 1:
+                        # Only 1 day available — show value without change
+                        curr = float(close.iloc[-1])
+                        display_val = curr
+                        if key == "usdinr" and curr < 5:
+                            display_val = round(1.0 / curr, 2)
+                        result[key] = {
+                            "value":  round(display_val, 2),
+                            "change": 0.0,
+                            "pct":    0.0,
+                            "bias":   "neutral",
                         }
                     else:
                         result[key] = self._mock_global(key)
@@ -164,29 +217,56 @@ class MarketData:
 
     def get_gift_nifty(self, precomputed_global: Optional[dict] = None) -> dict:
         """
-        GIFT Nifty gap estimate.
-        Accepts precomputed global markets to avoid a second yfinance fetch.
+        GIFT Nifty — tries live SGX/GIFT futures via yfinance, then falls back
+        to estimating from S&P 500 + Dow weighted average vs NIFTY prev close.
         """
-        try:
-            import requests
-            url = "https://ifsca.gov.in/api/gift-nifty"
-            r   = requests.get(url, timeout=4)
-            if r.status_code == 200:
-                data = r.json()
-                return {"value": data.get("last", 0), "gap_pts": data.get("gap", 0)}
-        except Exception:
-            pass
+        nifty_close = (precomputed_global or {}).get("nifty_close") or self._get_nifty_prev_close()
 
-        g        = precomputed_global or self.get_global_markets()
-        sp_pct   = g.get("sp500", {}).get("pct", 0)
-        nifty_close = g.get("nifty_close") or 22381
-        gap_est  = round(sp_pct * 50)   # rough: 1% S&P ≈ 50 NIFTY pts
+        # Try GIFT Nifty futures directly (traded on NSE IFSC / SGX)
+        for ticker in ("NIFTY.SGX", "GNF=F"):
+            try:
+                t    = yf.Ticker(ticker)
+                hist = t.history(period="1d", interval="5m")
+                if not hist.empty:
+                    gift_val = round(float(hist["Close"].iloc[-1]), 2)
+                    gap_pts  = round(gift_val - nifty_close) if nifty_close else 0
+                    return {
+                        "value":   gift_val,
+                        "gap_pts": gap_pts,
+                        "source":  "live",
+                        "bias":    "up" if gap_pts > 30 else "down" if gap_pts < -30 else "flat",
+                    }
+            except Exception:
+                continue
+
+        # Fallback: weighted estimate from US indices (S&P 60%, Dow 40%)
+        # Only estimate when we have both US data and NIFTY prev close.
+        g       = precomputed_global or self.get_global_markets()
+        sp_pct  = g.get("sp500",  {}).get("pct") or 0
+        dow_pct = g.get("dow",    {}).get("pct") or 0
+
+        if not nifty_close:
+            # No NIFTY base → can't estimate a level; return unavailable
+            return {"value": None, "gap_pts": None, "source": "unavailable", "bias": "flat"}
+
+        us_pct  = sp_pct * 0.6 + dow_pct * 0.4
+        # 1% move in US ≈ 0.5–0.6% move in NIFTY; use 0.55 as multiplier
+        gap_est  = round((us_pct * 0.55 / 100) * nifty_close)
+        gift_val = round(nifty_close + gap_est, 2)
         return {
-            "value":   round(nifty_close + gap_est, 2),
+            "value":   gift_val,
             "gap_pts": gap_est,
             "source":  "estimated",
             "bias":    "up" if gap_est > 30 else "down" if gap_est < -30 else "flat",
         }
+
+    def _get_nifty_prev_close(self) -> Optional[float]:
+        try:
+            hist = yf.Ticker("^NSEI").history(period="5d", interval="1d")
+            close = hist["Close"].dropna()
+            return round(float(close.iloc[-1]), 2) if not close.empty else None
+        except Exception:
+            return None
 
     def get_indices(self) -> dict:
         """Live Indian indices for home screen."""
@@ -207,7 +287,7 @@ class MarketData:
                     vix_chg  = 0.0
                     vix_pct  = 0.0
             except Exception:
-                vix_curr, vix_chg, vix_pct = 14.5, 0.0, 0.0
+                vix_curr, vix_chg, vix_pct = None, None, None
             return {
                 "nifty":     nse.get_spot_price("NIFTY"),
                 "banknifty": nse.get_spot_price("BANKNIFTY"),
@@ -217,10 +297,10 @@ class MarketData:
         except Exception as e:
             print(f"[Market] indices error: {e}")
             return {
-                "nifty":     {"price": 22381, "pct": -0.08},
-                "banknifty": {"price": 47840, "pct":  0.23},
-                "finnifty":  {"price": 23450, "pct":  0.11},
-                "vix":       {"value": 14.5,  "price": 14.5, "change": 0.0, "pct": 0.0},
+                "nifty":     {"price": None, "pct": None},
+                "banknifty": {"price": None, "pct": None},
+                "finnifty":  {"price": None, "pct": None},
+                "vix":       {"value": None, "price": None, "change": None, "pct": None},
             }
 
     def get_economic_calendar(self) -> list:
@@ -232,19 +312,6 @@ class MarketData:
         expiry = _weekly_expiry_tuesdays(today, 365)
         return sorted(macro + expiry, key=lambda e: e["date"])
 
-    # ── Mock data ──────────────────────────────────────────────────────────────
-
     def _mock_global(self, key: str) -> dict:
-        mocks = {
-            "sp500":    {"value": 5312,  "change": 31.2,   "pct":  0.59, "bias": "bullish"},
-            "dow":      {"value": 39820, "change": 124.0,  "pct":  0.31, "bias": "bullish"},
-            "nasdaq":   {"value": 16480, "change": 58.4,   "pct":  0.36, "bias": "bullish"},
-            "crude":    {"value": 82.4,  "change": 0.94,   "pct":  1.15, "bias": "neutral"},
-            "gold":     {"value": 2348,  "change": 6.2,    "pct":  0.26, "bias": "neutral"},
-            "usdinr":   {"value": 83.42, "change": -0.04,  "pct": -0.05, "bias": "neutral"},
-            "us10y":    {"value": 4.28,  "change": 0.02,   "pct":  0.47, "bias": "neutral"},
-            "nikkei":   {"value": 38420, "change": 180.0,  "pct":  0.47, "bias": "bullish"},
-            "hangseng": {"value": 17240, "change": -42.0,  "pct": -0.24, "bias": "neutral"},
-            "vix_us":   {"value": 18.2,  "change": -0.4,   "pct": -2.15, "bias": "bullish"},
-        }
-        return mocks.get(key, {"value": 0, "change": 0, "pct": 0, "bias": "neutral"})
+        """Return null-safe empty dict — never return hardcoded fake prices."""
+        return {"value": None, "change": None, "pct": None, "bias": "neutral"}

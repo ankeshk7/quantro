@@ -46,6 +46,62 @@ class SentimentScorer:
         self.client = anthropic.Anthropic(api_key=api_key) if api_key else None
         self.fetcher = NewsFetcher()
 
+    async def score_articles(self, articles: list) -> list:
+        """
+        Use Claude to assign positive/negative/neutral sentiment to each article
+        based on full context (headline + summary). Falls back to keyword sentiment
+        if API unavailable. Results cached by content hash for 10 minutes.
+        """
+        if not articles:
+            return articles
+        if not self.client:
+            return articles  # keep keyword-based fallback
+
+        lines = []
+        for i, a in enumerate(articles):
+            text = a["title"]
+            if a.get("summary"):
+                text += " — " + a["summary"][:150]
+            lines.append(f"{i}: {text}")
+
+        prompt    = "\n".join(lines)
+        cache_key = "art_" + hashlib.md5(prompt.encode()).hexdigest()
+        now       = time.monotonic()
+        cached    = _SENTIMENT_CACHE.get(cache_key)
+        if cached and now - cached["ts"] < _SENTIMENT_TTL:
+            return cached["data"]
+
+        try:
+            message = self.client.messages.create(
+                model      = "claude-haiku-4-5-20251001",
+                max_tokens = 600,
+                system     = (
+                    "You are a financial analyst classifying news sentiment for Indian equity markets.\n"
+                    "Rules:\n"
+                    "- rising oil / dollar / gold / VIX / bond yields = negative for equities\n"
+                    "- war, conflict, sanctions, geopolitical tension = negative\n"
+                    "- rate cuts, earnings beats, strong GDP, inflows = positive\n"
+                    "- company-specific bad news (fraud, loss, downgrade) = negative\n"
+                    "- routine data release with no surprise = neutral\n"
+                    "Return ONLY a JSON array, one entry per input line:\n"
+                    '[{"id": 0, "sentiment": "positive|negative|neutral"}, ...]'
+                ),
+                messages   = [{"role": "user", "content": prompt}],
+            )
+            raw    = message.content[0].text.strip().replace("```json", "").replace("```", "").strip()
+            scores = json.loads(raw)
+            score_map = {item["id"]: item["sentiment"] for item in scores}
+            result = [
+                {**a, "sentiment": score_map.get(i, a["sentiment"])}
+                for i, a in enumerate(articles)
+            ]
+            _SENTIMENT_CACHE[cache_key] = {"data": result, "ts": now}
+            return result
+
+        except Exception as e:
+            print(f"[Sentiment] article scoring error: {e}")
+            return articles   # fallback to keyword sentiment
+
     async def score(self, headlines: list) -> dict:
         """
         Score news headlines for market risk.

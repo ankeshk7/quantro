@@ -121,6 +121,110 @@ def save_trades(trades):
         json.dump(trades, f, indent=2)
 
 
+def _calc_breakeven(fit: dict, oi_data, spot: float | None) -> dict | None:
+    """
+    Estimate break-even levels from strike prices + option premiums from the OI chain.
+    Returns None when strikes are unavailable (Skip signal).
+    """
+    try:
+        rec     = fit.get("recommendation", "Skip")
+        strikes = fit.get("strikes", {})
+        if rec == "Skip" or not strikes:
+            return None
+
+        import pandas as pd
+        df = oi_data if isinstance(oi_data, pd.DataFrame) and not oi_data.empty else None
+
+        def _premium(strike, opt_type):
+            """Look up last-traded price for a strike from the live options chain.
+            Returns None if the chain is unavailable or the strike has no LTP (market closed, illiquid).
+            Never fabricates a synthetic estimate — callers must handle None."""
+            if df is not None and strike:
+                col = "ce_ltp" if opt_type == "CE" else "pe_ltp"
+                if col in df.columns:
+                    row = df[df["strike"] == strike]
+                    if not row.empty:
+                        val = float(row.iloc[0][col])
+                        if val > 0:
+                            return val
+            return None
+
+        if rec == "Bear Call Spread":
+            s_ce = strikes.get("short_ce")
+            l_ce = strikes.get("long_ce")
+            p_sell = _premium(s_ce, "CE")
+            p_buy  = _premium(l_ce, "CE")
+            if s_ce and p_sell is not None and p_buy is not None:
+                net_credit = round(p_sell - p_buy, 1)
+                return {
+                    "type":       "Bear Call Spread",
+                    "net_credit": net_credit,
+                    "breakeven":  round(s_ce + net_credit, 0),
+                    "max_profit": net_credit,
+                    "max_loss":   round((l_ce - s_ce) - net_credit, 1) if l_ce else None,
+                    "note":       f"Profit if NIFTY stays below {int(s_ce + net_credit)} at expiry",
+                }
+
+        if rec == "Bull Put Spread":
+            s_pe = strikes.get("short_pe")
+            l_pe = strikes.get("long_pe")
+            p_sell = _premium(s_pe, "PE")
+            p_buy  = _premium(l_pe, "PE")
+            if s_pe and p_sell is not None and p_buy is not None:
+                net_credit = round(p_sell - p_buy, 1)
+                return {
+                    "type":       "Bull Put Spread",
+                    "net_credit": net_credit,
+                    "breakeven":  round(s_pe - net_credit, 0),
+                    "max_profit": net_credit,
+                    "max_loss":   round((s_pe - l_pe) - net_credit, 1) if l_pe else None,
+                    "note":       f"Profit if NIFTY stays above {int(s_pe - net_credit)} at expiry",
+                }
+
+        if rec in ("Iron Fly", "Short Straddle"):
+            s_ce = strikes.get("short_ce")
+            s_pe = strikes.get("short_pe")
+            l_ce = strikes.get("long_ce")
+            l_pe = strikes.get("long_pe")
+            p_ce = _premium(s_ce, "CE")
+            p_pe = _premium(s_pe, "PE")
+            if s_ce and s_pe and p_ce is not None and p_pe is not None:
+                net = round(p_ce + p_pe, 1)
+                return {
+                    "type":       rec,
+                    "net_credit": net,
+                    "breakeven_up":   round(s_ce + net, 0),
+                    "breakeven_down": round(s_pe - net, 0),
+                    "max_profit": net,
+                    "max_loss":   round((l_ce - s_ce) - net, 1) if l_ce else None,
+                    "note":       f"Profit if NIFTY stays between {int(s_pe - net)} – {int(s_ce + net)}",
+                }
+
+        if rec == "Iron Condor":
+            s_ce = strikes.get("short_ce")
+            s_pe = strikes.get("short_pe")
+            l_ce = strikes.get("long_ce")
+            l_pe = strikes.get("long_pe")
+            p_ce = _premium(s_ce, "CE")
+            p_pe = _premium(s_pe, "PE")
+            p_lce = _premium(l_ce, "CE")
+            p_lpe = _premium(l_pe, "PE")
+            if all(v is not None for v in [s_ce, s_pe, p_ce, p_pe, p_lce, p_lpe]):
+                net = round((p_ce - p_lce) + (p_pe - p_lpe), 1)
+                return {
+                    "type":       "Iron Condor",
+                    "net_credit": net,
+                    "breakeven_up":   round(s_ce + net, 0),
+                    "breakeven_down": round(s_pe - net, 0),
+                    "max_profit": net,
+                    "max_loss":   round((l_ce - s_ce) - net, 1) if l_ce else None,
+                    "note":       f"Profit if NIFTY stays between {int(s_pe - net)} – {int(s_ce + net)}",
+                }
+    except Exception as e:
+        print(f"[breakeven] {e}")
+    return None
+
+
 async def _build_expiry_signal() -> dict:
     """Compute the full expiry signal. Called by both the endpoint and the warmer."""
     vix, fii, oi_data, headlines, global_mkts, spot_data = await asyncio.gather(
@@ -141,37 +245,52 @@ async def _build_expiry_signal() -> dict:
     ivr        = oi.ivr()
     walls      = oi.oi_walls()
     fit        = StrategyFit.recommend(
-        range_width        = walls["range_width"],
-        ivr                = ivr,
-        vix                = vix,
-        pcr                = pcr,
+        range_width        = walls["range_width"] or 0,
+        ivr                = ivr or 0,
+        vix                = vix or 0,
+        pcr                = pcr or 1.0,
         risk_score         = sentiment["risk_score"],
         direction          = sentiment.get("direction_bias", "neutral"),
-        gap_pts            = gift_nifty.get("gap_pts", 0) or 0,
-        max_pain           = max_pain,
-        spot               = spot,
-        fii_net            = fii.get("index_futures_net", 0) or 0,
-        call_wall          = walls.get("call_wall"),
-        put_wall           = walls.get("put_wall"),
-        distance_to_resist = walls.get("distance_to_resist"),
-        distance_to_support= walls.get("distance_to_support"),
+        gap_pts            = gift_nifty.get("gap_pts") or 0,
+        max_pain           = max_pain or None,
+        spot               = spot or None,
+        fii_net            = fii.get("index_futures_net") or 0,
+        call_wall          = walls.get("call_wall") or None,
+        put_wall           = walls.get("put_wall") or None,
+        distance_to_resist = walls.get("distance_to_resist") or None,
+        distance_to_support= walls.get("distance_to_support") or None,
     )
-    lot_size = await _run(nse.get_lot_size, "NIFTY")
+    lot_size     = await _run(nse.get_lot_size, "NIFTY")
+    expiry_dates = await _run(nse.get_nse_expiry_dates)
+    from datetime import date, datetime
+    today_iso        = date.today().isoformat()
+    is_expiry_today  = today_iso in expiry_dates
+
+    # Next expiry date (first expiry after today)
+    future_expiries  = sorted([e for e in (expiry_dates or []) if e > today_iso])
+    next_expiry      = future_expiries[0] if future_expiries else None
+
+    # Break-even levels from strikes + approximate premiums via OI chain
+    breakeven = _calc_breakeven(fit, oi_data, spot)
+
     return {
-        "signal":     fit["recommendation"],
-        "risk_score": sentiment["risk_score"],
-        "direction":  sentiment["direction_bias"],
-        "reasoning":  sentiment["reasoning"],
-        "vix":        vix,
-        "ivr":        ivr,
-        "pcr":        pcr,
-        "max_pain":   max_pain,
-        "lot_size":   lot_size,
-        "gift_nifty": gift_nifty,
-        "fii_net":    fii["index_futures_net"],
-        "walls":      walls,
-        "strategy":   fit,
-        "sentiment":  sentiment,
+        "signal":           fit["recommendation"],
+        "risk_score":       sentiment["risk_score"],
+        "direction":        sentiment["direction_bias"],
+        "reasoning":        sentiment["reasoning"],
+        "vix":              vix,
+        "ivr":              ivr,
+        "pcr":              pcr,
+        "max_pain":         max_pain,
+        "lot_size":         lot_size,
+        "gift_nifty":       gift_nifty,
+        "fii_net":          fii["index_futures_net"],
+        "walls":            walls,
+        "strategy":         fit,
+        "sentiment":        sentiment,
+        "is_expiry_today":  is_expiry_today,
+        "next_expiry":      next_expiry,
+        "breakeven":        breakeven,
     }
 
 
@@ -192,14 +311,13 @@ async def _warm_expiry_cache():
 @app.get("/api/home")
 async def get_home():
     """Daily morning dashboard — global markets, sectors, FII/DII, calendar, news."""
-    indices, global_mkts, sectors, fii_dii, macro_cal, headlines, nse_expiries = await asyncio.gather(
+    indices, global_mkts, sectors, fii_dii, macro_cal, nse_expiries = await asyncio.gather(
         _run(market.get_indices),
         _run(market.get_global_markets),
         _run(nse.get_sector_performance),
         _run(nse.get_fii_dii_today),
         _run(market.get_economic_calendar),
-        _run(news.fetch_all),
-        _run(nse.get_nse_expiry_dates),   # real NSE expiry dates
+        _run(nse.get_nse_expiry_dates),
     )
     # gift_nifty uses precomputed global_mkts; inject NIFTY close for base value
     nifty_close = (indices.get("nifty") or {}).get("price")
@@ -212,22 +330,45 @@ async def get_home():
         {"date": d, "event": "NIFTY weekly expiry", "impact": "trade_day"}
         for d in nse_expiries
     ]
-    # macro_cal already has fallback expiry Thursdays — drop them; real dates win
     macro_only  = [e for e in macro_cal if e.get("event") != "NIFTY weekly expiry"]
     calendar    = sorted(macro_only + expiry_events, key=lambda e: e["date"])
 
-    # Prioritise non-neutral headlines, then fill with neutral ones
-    non_neutral = [h for h in headlines if h.get("sentiment") != "neutral"]
-    neutral     = [h for h in headlines if h.get("sentiment") == "neutral"]
-    top_news    = (non_neutral + neutral)[:10]
+    from datetime import datetime
+    import pytz
+    ist = datetime.now(pytz.timezone("Asia/Kolkata"))
+    fii_updated = ist.strftime("%-I:%M %p IST") if fii_dii and any(fii_dii.values()) else None
+
     return J({
-        "indices":  indices,
-        "global":   {**global_mkts, "gift_nifty": gift_nifty},
-        "sectors":  sectors,
-        "fii_dii":  fii_dii,
-        "calendar": calendar,
-        "news":     top_news,
+        "indices":     indices,
+        "global":      {**global_mkts, "gift_nifty": gift_nifty},
+        "sectors":     sectors,
+        "fii_dii":     fii_dii,
+        "fii_updated": fii_updated,
+        "calendar":    calendar,
     })
+
+
+@app.get("/api/news")
+async def get_news():
+    """Latest market news — global and India. Sentiment scored by Claude API
+    for full-context accuracy; falls back to keyword scoring if unavailable."""
+    global_headlines, india_headlines = await asyncio.gather(
+        _run(news.fetch_global),
+        _run(news.fetch_india),
+    )
+    # Score all articles in one Claude call (batched, cached 10 min)
+    all_articles = global_headlines + india_headlines
+    scored       = await scorer.score_articles(all_articles)
+    split        = len(global_headlines)
+    return J({"global_news": scored[:split], "india_news": scored[split:]})
+
+
+# ── Top gainers ───────────────────────────────────────────────────────────────
+
+@app.get("/api/gainers")
+async def get_gainers():
+    data = await _run(nse.get_top_gainers, 15)
+    return J({"gainers": data})
 
 
 # ── Expiry / Iron Fly ─────────────────────────────────────────────────────────
@@ -270,7 +411,7 @@ async def get_ticker(symbol: str):
         _run(nse.get_spot_price, symbol),
         _run(nse.get_ohlcv, symbol),
         _run(nse.get_options_chain, symbol),
-        _run(nse.get_fii_dii_today, symbol),
+        _run(nse.get_stock_institutional, symbol),
         _run(news.fetch_ticker, symbol),
         _run(nse.get_technicals, symbol),
         _run(nse.get_india_vix),
@@ -280,16 +421,16 @@ async def get_ticker(symbol: str):
     def ok(v, default=None):
         return default if isinstance(v, Exception) else v
 
-    price      = ok(results[0], {})
-    ohlcv      = ok(results[1], {})
-    oi_data    = ok(results[2], pd.DataFrame())
-    fii        = ok(results[3], {})
-    headlines  = ok(results[4], [])
-    technicals = ok(results[5], {})
-    vix        = ok(results[6], 15.0)
+    price         = ok(results[0], {})
+    ohlcv         = ok(results[1], {})
+    oi_data       = ok(results[2], pd.DataFrame())
+    institutional = ok(results[3], {})
+    headlines     = ok(results[4], [])
+    technicals    = ok(results[5], {})
+    vix           = ok(results[6], 15.0)
 
     # Log individual failures for debugging
-    for i, label in enumerate(["price","ohlcv","chain","fii","news","technicals","vix"]):
+    for i, label in enumerate(["price","ohlcv","chain","institutional","news","technicals","vix"]):
         if isinstance(results[i], Exception):
             print(f"[ticker/{symbol}] {label} failed: {results[i]}")
 
@@ -325,7 +466,7 @@ async def get_ticker(symbol: str):
         "technicals": technicals,
         "oi":         oi_payload,
         "strategy_fit": fit,
-        "fii":        fii,
+        "institutional": institutional,
         "news":       headlines,
     })
 
@@ -354,6 +495,12 @@ async def get_scanner(filter: Optional[str] = "all"):
     filter: all | high_ivr | oi_buildup | breakout | near_support
     """
     return J(await _run(nse.scan_setups, filter))
+
+
+@app.get("/api/scanner/symbol/{symbol}")
+async def get_scanner_symbol(symbol: str):
+    """Scan a single symbol on demand (for search)."""
+    return J(await _run(nse.scan_one_symbol, symbol.upper()))
 
 
 # ── Kite Connect ──────────────────────────────────────────────────────────────

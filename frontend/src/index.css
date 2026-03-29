@@ -3,66 +3,58 @@
 :root {
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --green:  #1D9E75;
-  --red:    #E24B4A;
-  --amber:  #BA7517;
-  --blue:   #185FA5;
+
+  /* Accent colors — shared across themes */
+  --green:  #00d48c;
+  --red:    #ff4f4f;
+  --amber:  #f0a020;
+  --blue:   #4a9eff;
   --radius: 8px;
   --radius-lg: 12px;
 
-  /* Light theme (default) */
-  --border: rgba(0,0,0,0.1);
-  --bg:     #ffffff;
-  --bg2:    #f7f7f5;
-  --bg3:    #f0efeb;
-  --text1:  #1a1a1a;
-  --text2:  #666660;
-  --text3:  #999993;
+  /* ── Default: deep navy terminal (dark) ─────────────────────────── */
+  --bg:     #0d1017;
+  --bg2:    #141923;
+  --bg3:    #1c2535;
+  --border: rgba(100, 140, 210, 0.12);
+  --text1:  #dde8ff;
+  --text2:  #7a92c0;
+  --text3:  #455070;
 }
 
-/* Dark vars as a block — reused by both media query and explicit attribute */
-.dark-theme {
-  --border: rgba(255,255,255,0.1);
-  --bg:     #1a1a1a;
-  --bg2:    #242424;
-  --bg3:    #2e2e2e;
-  --text1:  #f0efe8;
-  --text2:  #a0a099;
-  --text3:  #666660;
-}
-
-/* System preference: dark — only when no manual override is set */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]):not([data-theme="dark"]) {
-    --border: rgba(255,255,255,0.1);
-    --bg:     #1a1a1a;
-    --bg2:    #242424;
-    --bg3:    #2e2e2e;
-    --text1:  #f0efe8;
-    --text2:  #a0a099;
-    --text3:  #666660;
-  }
-}
-
-/* Manual overrides */
-[data-theme="dark"] {
-  --border: rgba(255,255,255,0.1);
-  --bg:     #1a1a1a;
-  --bg2:    #242424;
-  --bg3:    #2e2e2e;
-  --text1:  #f0efe8;
-  --text2:  #a0a099;
-  --text3:  #666660;
-}
-
+/* Light theme — warm cream, easy on eyes */
 [data-theme="light"] {
-  --border: rgba(0,0,0,0.1);
-  --bg:     #ffffff;
-  --bg2:    #f7f7f5;
-  --bg3:    #f0efeb;
-  --text1:  #1a1a1a;
-  --text2:  #666660;
-  --text3:  #999993;
+  --bg:     #f5f0e8;
+  --bg2:    #ede7db;
+  --bg3:    #e2dace;
+  --border: rgba(100, 80, 55, 0.12);
+  --text1:  #261c0e;
+  --text2:  #6b5a42;
+  --text3:  #a0907a;
+}
+
+/* Explicit dark */
+[data-theme="dark"] {
+  --bg:     #0d1017;
+  --bg2:    #141923;
+  --bg3:    #1c2535;
+  --border: rgba(100, 140, 210, 0.12);
+  --text1:  #dde8ff;
+  --text2:  #7a92c0;
+  --text3:  #455070;
+}
+
+/* Auto: follow system */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --bg:     #f5f0e8;
+    --bg2:    #ede7db;
+    --bg3:    #e2dace;
+    --border: rgba(100, 80, 55, 0.12);
+    --text1:  #261c0e;
+    --text2:  #6b5a42;
+    --text3:  #a0907a;
+  }
 }
 
 body {
@@ -92,11 +84,19 @@ body {
   letter-spacing: 0.06em;
   white-space: nowrap;
 }
-.badge-green  { background: #EAF3DE; color: #3B6D11; }
-.badge-red    { background: #FCEBEB; color: #A32D2D; }
-.badge-amber  { background: #FAEEDA; color: #854F0B; }
-.badge-blue   { background: #E6F1FB; color: #185FA5; }
-.badge-gray   { background: #F1EFE8; color: #5F5E5A; }
+.badge-green  { background: rgba(0, 212, 140, 0.15);  color: #00d48c; }
+.badge-red    { background: rgba(255, 79, 79, 0.14);  color: #ff6060; }
+.badge-amber  { background: rgba(240, 160, 32, 0.14); color: #f0a020; }
+.badge-blue   { background: rgba(74, 158, 255, 0.14);  color: #4a9eff; }
+.badge-purple { background: rgba(155, 114, 207, 0.15); color: #9b72cf; }
+.badge-gray   { background: rgba(100, 140, 210, 0.10); color: var(--text2); }
+
+[data-theme="light"] .badge-green  { background: rgba(0, 180, 100, 0.13);  color: #0a6e42; }
+[data-theme="light"] .badge-red    { background: rgba(210, 50, 50, 0.10);   color: #a02020; }
+[data-theme="light"] .badge-amber  { background: rgba(200, 120, 0, 0.12);   color: #7a4800; }
+[data-theme="light"] .badge-blue   { background: rgba(40, 100, 200, 0.10);  color: #1a4e8a; }
+[data-theme="light"] .badge-purple { background: rgba(120, 60, 180, 0.10);  color: #6a2ea0; }
+[data-theme="light"] .badge-gray   { background: rgba(100, 80, 55, 0.10);   color: #6b5a42; }
 
 .card {
   background: var(--bg2);
@@ -122,6 +122,7 @@ body {
   border-radius: var(--radius);
   border: 0.5px solid var(--border);
   padding: 8px 10px;
+  text-align: center;
 }
 .stat-card .label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text3); margin-bottom: 3px; }
 .stat-card .value { font-size: 15px; font-weight: 500; font-family: var(--font-mono); color: var(--text1); }
@@ -228,6 +229,11 @@ body {
   50%       { box-shadow: 0 0 0 4px rgba(29,158,117,0); }
 }
 .market-open-dot { animation: marketPulse 2s infinite; }
+
+@keyframes ticker-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
 
 /* ── Mobile responsive ──────────────────────────────────────────────────────── */
 @media (max-width: 640px) {

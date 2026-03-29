@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>QUANTRO</title>
+    <!-- Anti-flash: set background before React paints. Reads saved theme from
+         localStorage so the color is always correct on first frame. -->
+    <script>
+      (function () {
+        var t = localStorage.getItem('ts-theme') || 'dark';
+        var bg = t === 'light' ? '#f5f0e8' : '#0d1017';
+        document.documentElement.style.background = bg;
+        if (t !== 'auto') document.documentElement.setAttribute('data-theme', t);
+      })();
+    </script>
+    <style>
+      /* Fallback so the very first paint is dark, even before the script runs */
+      html { background: #0d1017; }
+    </style>
   </head>
   <body>
     <div id="root"></div>

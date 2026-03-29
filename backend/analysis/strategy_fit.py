@@ -46,11 +46,10 @@ DIRECTIONAL_STRATEGIES = {
 }
 
 SKIP_REASONS = {
-    "vix_extreme":   "VIX > 25 — gap risk is too large for any short-option strategy. Stay in cash.",
     "ivr_too_low":   "IVR < 20 — premium is too thin. Risk/reward doesn't justify selling options this week.",
     "gap_extreme":   "Expected gap open > 150 pts — entry prices are invalidated before market even opens.",
     "risk_extreme":  "News risk score ≥ 9 — extreme event risk (crash, geopolitical shock). Capital protection first.",
-    "no_conviction": "High risk environment with no clear directional conviction. A coin-toss is not a strategy.",
+    "no_conviction": "VIX is elevated but signals are mixed — no clear directional edge. High IV with no conviction is a losing trade. Wait for clarity.",
 }
 
 
@@ -76,8 +75,8 @@ def recommend(
     direction = (direction or "neutral").lower()
 
     # ── Hard stops — no trade under any conditions ─────────────────────────────
-    if vix > 25:
-        return _skip("vix_extreme", vix, ivr, pcr, range_width)
+    if not vix:
+        return _skip("no_conviction", vix or 0, ivr, pcr, range_width)
     if ivr < 20:
         return _skip("ivr_too_low", vix, ivr, pcr, range_width)
     if abs(gap_pts) > 150:
@@ -95,10 +94,24 @@ def recommend(
     signals_ok  = sum(1 for v in signal_votes.values() if v["ok"])
 
     # ── Determine regime ───────────────────────────────────────────────────────
-    high_vix  = vix > 18
-    strong_dir = abs(total_score) >= 4
+    extreme_vix = vix > 25   # high IV = fat premiums, but directional only
+    high_vix    = vix > 18
+    strong_dir  = abs(total_score) >= 4
+    # Extreme VIX demands stronger conviction before entering
+    very_strong_dir = abs(total_score) >= 5
 
-    # ── High VIX: only trade if there's clear directional conviction ───────────
+    # ── Extreme VIX (>25): directional spread only if very strong conviction ───
+    if extreme_vix:
+        if not very_strong_dir:
+            return _skip("no_conviction", vix, ivr, pcr, range_width)
+        strategy_name = "Bear Call Spread" if total_score < 0 else "Bull Put Spread"
+        return _build_directional(
+            strategy_name, total_score, signal_votes, signals_ok,
+            vix, ivr, pcr, risk_score, direction,
+            max_pain, spot, call_wall, put_wall, range_width,
+        )
+
+    # ── High VIX (18–25): only trade if there's clear directional conviction ───
     if high_vix:
         if not strong_dir:
             return _skip("no_conviction", vix, ivr, pcr, range_width)
@@ -301,6 +314,7 @@ def _build_directional(name, total_score, signal_votes, signals_ok,
     confidence = 40 + (aligned / max(total_signals, 1)) * 35
     if ivr >= 50:   confidence += 8
     if vix < 22:    confidence += 5
+    if vix > 25:    confidence -= 8   # penalise for gap risk at extreme VIX
     confidence = min(82, int(confidence))
 
     # Sizing

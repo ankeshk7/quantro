@@ -133,6 +133,7 @@ _LOT_TTL    = 3600  # 1 hour – lot sizes change rarely
 _LOT_CACHE: dict = {}         # symbol → {lot_size, ts}
 _FO_LOTS_CACHE: dict = {"data": None, "ts": 0.0}   # full CSV lot table, 24h TTL
 _EXPIRY_CACHE: dict = {"data": None, "ts": 0.0}    # NSE expiry dates, 6h TTL
+_GAINERS_CACHE: dict = {"data": None, "ts": 0.0}   # top gainers, 3 min TTL
 
 
 def _load_fo_lot_sizes() -> dict:
@@ -382,8 +383,8 @@ class NSEData:
                 "close":   price,
                 "prev":    prev,
                 "volume":  int(row["Volume"]),
-                "week52h": round(float(w52h), 2) if w52h else round(price * 1.28, 2),
-                "week52l": round(float(w52l), 2) if w52l else round(price * 0.74, 2),
+                "week52h": round(float(w52h), 2) if w52h else None,
+                "week52l": round(float(w52l), 2) if w52l else None,
             }
         except Exception as e:
             print(f"[NSE] ohlcv {symbol}: {e}")
@@ -533,13 +534,22 @@ class NSEData:
         if _VIX_CACHE["value"] is not None and now - _VIX_CACHE["ts"] < _SHORT_TTL:
             return _VIX_CACHE["value"]
         try:
-            vix = round(float(yf.Ticker("^INDIAVIX").fast_info["last_price"]), 2)
+            t    = yf.Ticker("^INDIAVIX")
+            hist = t.history(period="2d", interval="1d")
+            if not hist.empty:
+                val = float(hist["Close"].iloc[-1])
+            else:
+                val = t.fast_info.get("last_price") or t.fast_info.get("regularMarketPrice")
+                if val is None:
+                    raise ValueError("VIX unavailable")
+                val = float(val)
+            vix = round(val, 2)
             _VIX_CACHE["value"] = vix
             _VIX_CACHE["ts"]    = now
             return vix
         except Exception as e:
             print(f"[NSE] VIX: {e}")
-            return _VIX_CACHE.get("value") or 14.5
+            return _VIX_CACHE["value"]  # None if never fetched successfully
 
     # ── FII / DII ─────────────────────────────────────────────────────────────
 
@@ -571,10 +581,12 @@ class NSEData:
             fii_buy = int(_parse(fii.get("buyValue", 0)))
             fii_sel = int(_parse(fii.get("sellValue", 0)))
 
+            # NSE fiidiiTradeReact gives one total row per category — not split by
+            # cash/futures/options. Using total FII net for directional bias.
             result = {
-                "index_futures_net": fii_net,
-                "index_options_net": fii_net,
-                "cash_net_fii":      fii_net,
+                "index_futures_net": fii_net,   # total FII net (proxy for bias; cash+deriv combined)
+                "index_options_net": None,       # not separately available from this endpoint
+                "cash_net_fii":      None,       # not separately available from this endpoint
                 "cash_net_dii":      dii_net,
                 "fii_buy":           fii_buy,
                 "fii_sell":          fii_sel,
@@ -614,9 +626,9 @@ class NSEData:
                             / float(close.iloc[-2]) * 100, 2
                         )
                     else:
-                        pct = _SECTOR_CHANGES_MOCK.get(sector, 0.0)
+                        pct = None   # only 1 day of data — no change available
                 except Exception:
-                    pct = _SECTOR_CHANGES_MOCK.get(sector, 0.0)
+                    pct = None       # download failed — show dash, not fake value
                 result.append({
                     "sector": sector,
                     "change": pct,
@@ -626,6 +638,115 @@ class NSEData:
         except Exception as e:
             print(f"[NSE] sectors: {e}")
             return self._mock_sectors()
+
+    # ── Stock-level institutional proxies ────────────────────────────────────
+
+    def get_stock_institutional(self, symbol: str) -> dict:
+        """
+        Returns stock-specific institutional activity proxies:
+          - delivery_pct   : % of traded volume delivered (high = institutional accumulation)
+          - futures_oi     : open interest on stock futures
+          - futures_oi_chg : OI change today (+ = positions building, - = unwinding)
+          - futures_bias   : bullish / bearish / neutral derived from price + OI direction
+          - pcr            : put-call ratio from options chain
+          - note           : disclaimer that this is a proxy, not actual FII/DII data
+        """
+        result = {
+            "delivery_pct":   None,
+            "futures_oi":     None,
+            "futures_oi_chg": None,
+            "futures_bias":   "neutral",
+            "pcr":            None,
+            "note": "Institutional proxy — delivery %, futures OI & PCR. True stock-level FII/DII is disclosed quarterly only.",
+        }
+        try:
+            nse = _get_nse()
+            ti  = nse.trade_info(symbol)
+            dp  = ti.get("securityWiseDP", {})
+            if dp.get("deliveryToTradedQuantity") is not None:
+                result["delivery_pct"] = round(float(dp["deliveryToTradedQuantity"]), 1)
+        except Exception as e:
+            print(f"[NSE] trade_info {symbol}: {e}")
+
+        try:
+            nse  = _get_nse()
+            fno  = nse.stock_quote_fno(symbol)
+            data = fno.get("stocks", [])
+            # Find the nearest futures contract
+            for row in data:
+                if row.get("metadata", {}).get("instrumentType") == "Stock Futures":
+                    md = row["metadata"]
+                    oi     = md.get("openInterest")
+                    oi_chg = md.get("changeinOpenInterest")
+                    price_chg = md.get("change", 0)
+                    result["futures_oi"]     = oi
+                    result["futures_oi_chg"] = oi_chg
+                    # Price up + OI up = longs building (bullish)
+                    # Price down + OI up = shorts building (bearish)
+                    # OI down = positions unwinding
+                    if oi_chg and oi_chg > 0:
+                        result["futures_bias"] = "bullish" if (price_chg or 0) >= 0 else "bearish"
+                    elif oi_chg and oi_chg < 0:
+                        result["futures_bias"] = "neutral"  # unwinding
+                    break
+        except Exception as e:
+            print(f"[NSE] stock_quote_fno {symbol}: {e}")
+
+        try:
+            chain = self.get_options_chain(symbol)
+            if not chain.empty:
+                total_ce = int(chain["ce_oi"].sum())
+                total_pe = int(chain["pe_oi"].sum())
+                if total_ce:
+                    result["pcr"] = round(total_pe / total_ce, 2)
+        except Exception:
+            pass
+
+        return result
+
+    # ── Top gainers ───────────────────────────────────────────────────────────
+
+    def get_top_gainers(self, n: int = 15) -> list:
+        """
+        Fetch top N gainers from NIFTY 50 stocks by % change today.
+        Cached 3 minutes.
+        """
+        now = time.monotonic()
+        if _GAINERS_CACHE["data"] is not None and now - _GAINERS_CACHE["ts"] < 180:
+            return _GAINERS_CACHE["data"]
+        try:
+            tickers = [s + ".NS" for s in FO_STOCKS]
+            raw = yf.download(
+                tickers     = tickers,
+                period      = "2d",
+                interval    = "1d",
+                group_by    = "ticker",
+                auto_adjust = True,
+                progress    = False,
+                threads     = True,
+            )
+            results = []
+            for sym in FO_STOCKS:
+                yf_sym = sym + ".NS"
+                try:
+                    hist  = raw[yf_sym] if len(tickers) > 1 else raw
+                    close = hist["Close"].dropna()
+                    if len(close) < 2:
+                        continue
+                    prev  = float(close.iloc[-2])
+                    curr  = float(close.iloc[-1])
+                    pct   = round((curr - prev) / prev * 100, 2)
+                    results.append({"symbol": sym, "price": round(curr, 2), "change": pct})
+                except Exception:
+                    continue
+            results.sort(key=lambda x: x["change"], reverse=True)
+            top = results[:n]
+            _GAINERS_CACHE["data"] = top
+            _GAINERS_CACHE["ts"]   = now
+            return top
+        except Exception as e:
+            print(f"[NSE] gainers: {e}")
+            return _GAINERS_CACHE["data"] or []
 
     # ── Technicals ────────────────────────────────────────────────────────────
 
@@ -690,20 +811,40 @@ class NSEData:
             try:
                 spot  = self.get_spot_price(symbol)
                 chain = self.get_options_chain(symbol)
+                tech  = self.get_technicals(symbol)
                 oi    = _OIQuick(chain)
                 ivr   = oi.ivr()
+                pcr   = oi.pcr()
                 walls = oi.oi_walls()
-                fit   = _strategy_fit_quick(walls["range_width"], ivr, vix)
+                price = spot.get("price") or 0
+                pct   = spot.get("pct") or 0
+
+                strategy, confidence, signals = _score_signals(
+                    ivr        = ivr,
+                    pcr        = pcr,
+                    vix        = vix,
+                    trend      = tech.get("trend", "sideways"),
+                    rsi        = tech.get("rsi", 50),
+                    price      = price,
+                    ema20      = tech.get("ema20", price),
+                    ema50      = tech.get("ema50", price),
+                    pct_change = pct,
+                    range_width= walls["range_width"],
+                    call_wall  = walls["call_wall"],
+                    put_wall   = walls["put_wall"],
+                )
+
                 return {
                     "symbol":     symbol,
-                    "price":      spot["price"],
-                    "change":     spot["pct"],
+                    "price":      price,
+                    "change":     pct,
                     "ivr":        ivr,
-                    "strategy":   fit,
+                    "strategy":   strategy,
                     "range":      walls["range_width"],
-                    "detail":     f"IVR {ivr} · Range {walls['range_width']} pts · PCR {oi.pcr()}",
-                    "confidence": oi.confidence(),
-                    "_walls":     walls,   # kept for filter checks, stripped before return
+                    "detail":     f"IVR {ivr} · PCR {pcr} · RSI {tech.get('rsi','—')} · {tech.get('trend','—').capitalize()}",
+                    "confidence": confidence,
+                    "signals":    signals,
+                    "_walls":     walls,
                 }
             except Exception as e:
                 print(f"[Scanner] {symbol}: {e}")
@@ -712,7 +853,7 @@ class NSEData:
         # Fetch all symbols in parallel — options chain is cached per-symbol so
         # repeated scanner runs are instant; first run hits NSE in parallel threads.
         from concurrent.futures import ThreadPoolExecutor, as_completed
-        symbols = FO_STOCKS[:20]
+        symbols = FO_STOCKS  # scan all 30 F&O stocks
         raw = []
         with ThreadPoolExecutor(max_workers=10) as pool:
             futures = {pool.submit(_scan_one, sym): sym for sym in symbols}
@@ -727,7 +868,7 @@ class NSEData:
             walls = r.pop("_walls", {})
             if filter == "high_ivr"     and r["ivr"] < 50:                              continue
             if filter == "oi_buildup"   and r["ivr"] < 30:                              continue
-            if filter == "breakout"     and "Bull" not in r["strategy"]:                continue
+            if filter == "breakout"     and "Bull" not in r["strategy"] and "Bear" not in r["strategy"]: continue
             if filter == "near_support" and walls.get("distance_to_support", 999) > 100: continue
             results.append(r)
 
@@ -735,6 +876,37 @@ class NSEData:
         out = results[:10]
         self._SCAN_CACHE[filter] = {"data": out, "ts": now}
         return out
+
+    def scan_one_symbol(self, symbol: str) -> dict | None:
+        """Scan a single symbol on demand — used by frontend search."""
+        vix = self.get_india_vix()
+        try:
+            spot  = self.get_spot_price(symbol)
+            chain = self.get_options_chain(symbol)
+            tech  = self.get_technicals(symbol)
+            oi    = _OIQuick(chain)
+            ivr   = oi.ivr()
+            pcr   = oi.pcr()
+            walls = oi.oi_walls()
+            price = spot.get("price") or 0
+            pct   = spot.get("pct") or 0
+            strategy, confidence, signals = _score_signals(
+                ivr=ivr, pcr=pcr, vix=vix,
+                trend=tech.get("trend", "sideways"), rsi=tech.get("rsi", 50),
+                price=price, ema20=tech.get("ema20", price), ema50=tech.get("ema50", price),
+                pct_change=pct, range_width=walls["range_width"],
+                call_wall=walls["call_wall"], put_wall=walls["put_wall"],
+            )
+            return {
+                "symbol": symbol, "price": price, "change": pct,
+                "ivr": ivr, "strategy": strategy,
+                "range": walls["range_width"],
+                "detail": f"IVR {ivr} · PCR {pcr} · RSI {tech.get('rsi','—')} · {tech.get('trend','—').capitalize()}",
+                "confidence": confidence, "signals": signals,
+            }
+        except Exception as e:
+            print(f"[Scanner] {symbol}: {e}")
+            return None
 
     def search(self, q: str) -> list:
         symbols = _load_all_symbols()
@@ -750,74 +922,35 @@ class NSEData:
     # ── Mock helpers (fallback) ───────────────────────────────────────────────
 
     def _mock_spot(self, symbol: str) -> dict:
-        p = float(_MOCK_PRICES.get(symbol, 1000))
-        chg, pct = _MOCK_CHANGES.get(symbol, (10, 0.5))
+        """Data unavailable — return nulls, never fake prices."""
         return {
-            "symbol": symbol, "price": p, "change": float(chg), "pct": float(pct),
-            "open": round(p - 20.0, 2), "high": round(p + 40.0, 2),
-            "low":  round(p - 30.0, 2), "prev": round(p - float(chg), 2),
-            "volume": 1000000,
+            "symbol": symbol, "price": None, "change": None, "pct": None,
+            "open": None, "high": None, "low": None, "prev": None, "volume": None,
         }
 
     def _mock_ohlcv(self, symbol: str) -> dict:
-        p = float(_MOCK_PRICES.get(symbol, 1000))
-        chg, _ = _MOCK_CHANGES.get(symbol, (10, 0.5))
         return {
-            "open":  round(p - 20.0, 2), "high":  round(p + 40.0, 2),
-            "low":   round(p - 30.0, 2), "close": p,
-            "prev":  round(p - float(chg), 2), "volume": 1000000,
-            "week52h": round(p * 1.28, 2), "week52l": round(p * 0.74, 2),
+            "open": None, "high": None, "low": None, "close": None,
+            "prev": None, "volume": None, "week52h": None, "week52l": None,
         }
 
     def _mock_fii_dii(self) -> dict:
         return {
-            "index_futures_net": 1240, "index_options_net": 880,
-            "cash_net_fii": 620, "cash_net_dii": -420,
-            "label": "FII net long", "bias": "bullish",
+            "index_futures_net": None, "index_options_net": None,
+            "cash_net_fii": None, "cash_net_dii": None,
+            "label": "Unavailable", "bias": "neutral",
         }
 
     def _mock_sectors(self) -> list:
-        return [
-            {"sector": s, "change": c,
-             "bias": "bullish" if c > 0 else "bearish" if c < 0 else "neutral"}
-            for s, c in _SECTOR_CHANGES_MOCK.items()
-        ]
+        return []
 
     def _mock_chain(self, symbol: str) -> pd.DataFrame:
-        spot    = float(_MOCK_PRICES.get(symbol, 22381))
-        atm     = int(round(spot / 100) * 100)
-        strikes = [atm - 200, atm - 100, atm, atm + 100, atm + 200]
-        rows    = []
-        for i, s in enumerate(strikes):
-            dist  = abs(s - atm)
-            ce_oi = max(5, 52 - dist // 10) * 100000
-            pe_oi = max(5, 56 - dist // 10) * 100000
-            ce_ltp = float(max(2, 90 - dist // 2))
-            pe_ltp = float(max(2, 88 - dist // 2))
-            rows.append({
-                "strike":    s,
-                "expiry":    "",
-                "ce_oi":     ce_oi, "ce_coi": ce_oi // 10,
-                "ce_iv":     round(11.5 + i * 0.5, 1),
-                "ce_ltp":    ce_ltp,
-                "ce_bid":    round(ce_ltp * 0.98, 1),
-                "ce_ask":    round(ce_ltp * 1.02, 1),
-                "ce_volume": ce_oi // 10,
-                "pe_oi":     pe_oi, "pe_coi": pe_oi // 12,
-                "pe_iv":     round(12.0 + i * 0.4, 1),
-                "pe_ltp":    pe_ltp,
-                "pe_bid":    round(pe_ltp * 0.98, 1),
-                "pe_ask":    round(pe_ltp * 1.02, 1),
-                "pe_volume": pe_oi // 10,
-            })
-        return pd.DataFrame(rows)
+        return pd.DataFrame()
 
     def _mock_technicals(self, symbol: str) -> dict:
-        p = float(_MOCK_PRICES.get(symbol, 1000))
         return {
-            "trend": "sideways", "ema20": round(p * 0.998, 1),
-            "ema50": round(p * 0.993, 1), "rsi": 53.2,
-            "support": round(p * 0.988, 1), "resistance": round(p * 1.009, 1),
+            "trend": None, "ema20": None, "ema50": None, "rsi": None,
+            "support": None, "resistance": None,
         }
 
 
@@ -827,6 +960,9 @@ class _OIQuick:
     """Lightweight OI helper used only by scan_setups."""
 
     def __init__(self, df: pd.DataFrame):
+        required = {"ce_oi", "pe_oi", "ce_iv", "pe_iv", "strike"}
+        if df is None or df.empty or not required.issubset(df.columns):
+            raise ValueError("options chain unavailable or missing columns")
         self.df = df
 
     def ivr(self) -> int:
@@ -835,10 +971,12 @@ class _OIQuick:
             ce_iv = float(self.df.iloc[mid]["ce_iv"])
             pe_iv = float(self.df.iloc[mid]["pe_iv"])
             avg   = (ce_iv + pe_iv) / 2
-            # Rough IVR: normalise against typical NSE IV range 10-25
-            return min(100, max(0, int((avg - 10) / 15 * 100)))
+            if avg <= 0:
+                raise ValueError("zero IV — chain likely outside market hours")
+            # Normalise against NSE IV range 10-60 (wider to avoid perpetual 100)
+            return min(100, max(0, int((avg - 10) / 50 * 100)))
         except Exception:
-            return 58
+            raise   # propagate so _scan_one skips this symbol rather than using fake IVR
 
     def pcr(self) -> float:
         total_ce = int(self.df["ce_oi"].sum())
@@ -856,20 +994,127 @@ class _OIQuick:
         }
 
     def confidence(self) -> int:
-        score = 50
-        if self.pcr() > 1.0: score += 10
-        if self.pcr() > 1.2: score += 5
-        if self.ivr()  > 50: score += 10
-        if self.ivr()  > 65: score += 5
-        walls = self.oi_walls()
-        if walls["range_width"] and 100 < walls["range_width"] < 300:
-            score += 10
-        return min(100, score)
+        # Legacy fallback — real confidence now comes from _score_signals
+        ivr = self.ivr()
+        base = 50 + (ivr - 50) // 5 if ivr > 50 else 40
+        return min(80, max(30, base))
 
 
-def _strategy_fit_quick(range_width: int, ivr: int, vix: float) -> str:
-    if ivr < 30 or vix > 22: return "Skip"
-    if range_width < 100:    return "Short Straddle"
-    if range_width <= 250:   return "Iron Fly"
-    if range_width <= 400:   return "Iron Condor"
-    return "Skip"
+def _score_signals(
+    ivr: int, pcr: float, vix: float, trend: str, rsi: float,
+    price: float, ema20: float, ema50: float, pct_change: float,
+    range_width: int, call_wall: int, put_wall: int,
+) -> tuple[str, int, dict]:
+    """
+    Score 7 independent signals, each casting a directional vote.
+      +1 = bullish,  -1 = bearish,  0 = neutral/skip
+    Only recommend a strategy when enough signals agree.
+    Returns (strategy_name, confidence_0_100, signals_dict).
+    """
+
+    signals = {}
+
+    # 1. Trend (EMA alignment)
+    if trend == "bullish":   signals["trend"] = 1
+    elif trend == "bearish": signals["trend"] = -1
+    else:                    signals["trend"] = 0
+
+    # 2. RSI momentum
+    if rsi >= 60:            signals["rsi"] = 1
+    elif rsi <= 40:          signals["rsi"] = -1
+    else:                    signals["rsi"] = 0
+
+    # 3. Price vs EMA20
+    if ema20 and price > ema20 * 1.005:   signals["ema"] = 1
+    elif ema20 and price < ema20 * 0.995: signals["ema"] = -1
+    else:                                  signals["ema"] = 0
+
+    # 4. PCR (Put-Call Ratio)
+    # PCR > 1.2 → more puts = hedging → underlying likely supported → bullish
+    # PCR < 0.8 → more calls = speculation → underlying may be topping → bearish
+    if pcr >= 1.2:    signals["pcr"] = 1
+    elif pcr <= 0.8:  signals["pcr"] = -1
+    else:             signals["pcr"] = 0
+
+    # 5. Price momentum (recent day % change)
+    if pct_change >= 1.0:    signals["momentum"] = 1
+    elif pct_change <= -1.0: signals["momentum"] = -1
+    else:                    signals["momentum"] = 0
+
+    # 6. OI wall skew — spot closer to call wall = bearish resistance overhead
+    if call_wall and put_wall and call_wall > put_wall:
+        mid      = (call_wall + put_wall) / 2
+        skew     = (price - mid) / (call_wall - put_wall + 1)
+        if skew > 0.1:   signals["oi_skew"] = -1   # near call wall = resistance
+        elif skew < -0.1: signals["oi_skew"] = 1    # near put wall = support
+        else:             signals["oi_skew"] = 0
+    else:
+        signals["oi_skew"] = 0
+
+    # 7. IVR regime — high IV favours selling, not buying direction
+    #    Only counts toward neutral conviction, not directional
+    high_ivr = ivr >= 50
+
+    total = sum(signals.values())
+    bullish_count = sum(1 for v in signals.values() if v == 1)
+    bearish_count = sum(1 for v in signals.values() if v == -1)
+    aligned = max(bullish_count, bearish_count)  # how many signals agree
+
+    high_vix  = vix and vix > 22
+    ivr_ok    = ivr >= 30
+
+    # ── Strategy selection ────────────────────────────────────────────────────
+
+    # Need at least 4/7 signals aligned for directional, else check neutral
+    DIRECTIONAL_THRESHOLD = 4
+    NEUTRAL_THRESHOLD     = 3   # for neutral/range-bound setups
+
+    if not ivr_ok:
+        # IV too low — premium not worth selling
+        return "Skip", 0, signals
+
+    if total >= DIRECTIONAL_THRESHOLD:
+        # Bullish bias
+        if high_vix:
+            strategy = "Bull Put Spread"   # defined risk in volatile tape
+        elif high_ivr:
+            strategy = "Bull Put Spread"   # sell put spread to collect premium
+        else:
+            strategy = "Bull Call Spread"  # buy direction cheaply
+        confidence = _calc_confidence(aligned, ivr, vix, bullish=True)
+        return strategy, confidence, signals
+
+    if total <= -DIRECTIONAL_THRESHOLD:
+        # Bearish bias
+        if high_vix or high_ivr:
+            strategy = "Bear Call Spread"
+        else:
+            strategy = "Bear Put Spread"
+        confidence = _calc_confidence(aligned, ivr, vix, bullish=False)
+        return strategy, confidence, signals
+
+    # Neutral — signals conflicting or flat
+    if aligned >= NEUTRAL_THRESHOLD and high_ivr and not high_vix:
+        if range_width > 0 and range_width <= 200:
+            strategy = "Iron Fly"
+        elif range_width <= 400:
+            strategy = "Iron Condor"
+        else:
+            strategy = "Short Straddle"
+        confidence = _calc_confidence(aligned, ivr, vix, bullish=None)
+        return strategy, confidence, signals
+
+    return "Skip", 0, signals
+
+
+def _calc_confidence(aligned: int, ivr: int, vix: float, bullish) -> int:
+    """Compute 0-100 confidence from signal alignment + IV quality."""
+    # Base: signal alignment (4→60, 5→75, 6→85, 7→95)
+    base = {4: 60, 5: 75, 6: 85, 7: 95}.get(aligned, max(40, aligned * 12))
+    # IVR bonus
+    if ivr >= 70: base += 10
+    elif ivr >= 50: base += 5
+    # VIX penalty when extreme
+    if vix and vix > 25: base -= 10
+    elif vix and vix > 22: base -= 5
+    return min(95, max(30, base))

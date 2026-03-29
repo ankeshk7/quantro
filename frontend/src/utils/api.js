@@ -33,13 +33,16 @@ async function patch(path, body) {
 
 export const api = {
   home:         ()           => get('/home'),
+  news:         ()           => get('/news'),
+  gainers:      ()           => get('/gainers'),
   expirySignal: ()           => get('/expiry/signal'),
   expiryLive:   ()           => get('/expiry/live'),
   ticker:       (sym)        => get(`/ticker/${encodeURIComponent(sym)}`),
   hist:         (sym, tf)    => get(`/hist/${encodeURIComponent(sym)}?interval=${tf || '1d'}`),
   price:        (sym)        => get(`/price/${encodeURIComponent(sym)}`),
   search:       (q)          => get(`/search?q=${encodeURIComponent(q)}`),
-  scanner:      (filter)     => get(`/scanner?filter=${filter || 'all'}`),
+  scanner:       (filter)  => get(`/scanner?filter=${filter || 'all'}`),
+  scannerSymbol: (symbol)  => get(`/scanner/symbol/${encodeURIComponent(symbol)}`),
   positions:    ()           => get('/positions'),
   journal:      ()           => get('/journal'),
   addTrade:     (trade)      => post('/journal', trade),

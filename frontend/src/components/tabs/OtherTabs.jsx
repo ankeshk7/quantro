@@ -39,12 +39,104 @@ const SORTS = [
   { key: 'ivr',        label: 'IVR' },
 ]
 
+function ConfidenceHint() {
+  const [show, setShow] = useState(false)
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex' }}>
+      <span
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        style={{
+          width: 15, height: 15, borderRadius: '50%', background: 'var(--bg3)',
+          border: '0.5px solid var(--border)', color: 'var(--text2)',
+          fontSize: 9, fontWeight: 700, cursor: 'default',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>?</span>
+      {show && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+          width: 230, background: 'var(--bg3)', border: '0.5px solid var(--border)',
+          borderRadius: 8, padding: '10px 12px', zIndex: 999,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
+        }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text1)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            How confidence is scored
+          </div>
+          {[
+            { label: 'Trend',     desc: 'EMA20 vs EMA50 alignment — price above both EMAs is bullish, below is bearish' },
+            { label: 'RSI',       desc: 'Above 60 = bullish momentum, below 40 = bearish. Extremes add conviction' },
+            { label: 'EMA20',     desc: 'Price more than 0.5% above/below EMA20 confirms short-term direction' },
+            { label: 'PCR',       desc: 'Put-Call Ratio >1.2 = put-heavy (bullish support). <0.8 = call-heavy (bearish)' },
+            { label: 'Momentum',  desc: 'Day % change >1% up or >1% down adds directional weight' },
+            { label: 'OI Skew',   desc: 'Spot near call wall = resistance overhead (bearish). Near put wall = support (bullish)' },
+            { label: 'IVR',       desc: 'IV Rank ≥50 means enough premium to sell. Below 30 = skip, not worth the risk' },
+          ].map(r => (
+            <div key={r.label} style={{ marginBottom: 6, paddingBottom: 6, borderBottom: '0.5px solid var(--border)' }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--green)', marginBottom: 2 }}>{r.label}</div>
+              <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.5 }}>{r.desc}</div>
+            </div>
+          ))}
+          <div style={{ fontSize: 10, color: 'var(--text3)', lineHeight: 1.5 }}>
+            A strategy is only recommended when <span style={{ color: 'var(--amber)', fontWeight: 600 }}>4 or more</span> of these 7 signals agree. Fewer = Skip.
+          </div>
+          {/* Arrow */}
+          <div style={{
+            position: 'absolute', top: -5, right: 12,
+            width: 8, height: 8, background: 'var(--bg3)',
+            border: '0.5px solid var(--border)', borderBottom: 'none', borderRight: 'none',
+            transform: 'rotate(45deg)',
+          }} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+const SIGNAL_LABELS = {
+  trend:    { 1: 'Trend bullish',  '-1': 'Trend bearish',  0: 'Trend sideways' },
+  rsi:      { 1: 'RSI bullish',    '-1': 'RSI bearish',    0: 'RSI neutral' },
+  ema:      { 1: 'Above EMA20',    '-1': 'Below EMA20',    0: 'Near EMA20' },
+  pcr:      { 1: 'PCR bullish',    '-1': 'PCR bearish',    0: 'PCR neutral' },
+  momentum: { 1: 'Strong up day',  '-1': 'Strong down day',0: 'Flat day' },
+  oi_skew:  { 1: 'Near put wall',  '-1': 'Near call wall', 0: 'Mid range' },
+}
+
+function signalReasons(signals = {}, strategy = '') {
+  const isBull = strategy.includes('Bull')
+  const isBear = strategy.includes('Bear')
+  return Object.entries(signals)
+    .filter(([, v]) => v !== 0)
+    .filter(([, v]) => isBull ? v === 1 : isBear ? v === -1 : true)
+    .slice(0, 3)
+    .map(([k, v]) => SIGNAL_LABELS[k]?.[String(v)] || k)
+}
+
 export function ScannerTab({ onViewTicker }) {
-  const [filter, setFilter] = useState('all')
-  const [sort,   setSort]   = useState('confidence')
-  const [search, setSearch] = useState('')
+  const [filter,       setFilter]       = useState('all')
+  const [sort,         setSort]         = useState('confidence')
+  const [minConf,      setMinConf]      = useState(false)
+  const [search,       setSearch]       = useState('')
+  const [searchResult, setSearchResult] = useState(null)
+  const [searching,    setSearching]    = useState(false)
+  const [expanded,     setExpanded]     = useState(null)
+
   const { data, loading, error, refresh, lastUpdated } = useApi(() => api.scanner(filter), [filter], `scanner-${filter}`)
   const updatedLabel = useRelativeTime(lastUpdated)
+
+  // When user types, debounce then hit /api/scanner/symbol/:sym
+  useEffect(() => {
+    const q = search.trim().toUpperCase()
+    if (!q) { setSearchResult(null); return }
+    const id = setTimeout(async () => {
+      setSearching(true)
+      try {
+        const res = await api.scannerSymbol(q)
+        setSearchResult(res)
+      } catch { setSearchResult(null) }
+      finally { setSearching(false) }
+    }, 500)
+    return () => clearTimeout(id)
+  }, [search])
 
   const badgeCls = (strategy) => {
     if (strategy === 'Skip') return 'badge-red'
@@ -54,14 +146,16 @@ export function ScannerTab({ onViewTicker }) {
     return 'badge-gray'
   }
 
-  const sorted = [...(data || [])]
-    .filter(s => !search || s.symbol?.toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => {
-      if (sort === 'confidence') return (b.confidence ?? 0) - (a.confidence ?? 0)
-      if (sort === 'change')     return Math.abs(b.change ?? 0) - Math.abs(a.change ?? 0)
-      if (sort === 'ivr')        return (b.ivr ?? 0) - (a.ivr ?? 0)
-      return 0
-    })
+  const sorted = search.trim()
+    ? (searchResult ? [searchResult] : [])
+    : [...(data || [])]
+        .filter(s => !minConf || s.confidence >= 70)
+        .sort((a, b) => {
+          if (sort === 'confidence') return (b.confidence ?? 0) - (a.confidence ?? 0)
+          if (sort === 'change')     return Math.abs(b.change ?? 0) - Math.abs(a.change ?? 0)
+          if (sort === 'ivr')        return (b.ivr ?? 0) - (a.ivr ?? 0)
+          return 0
+        })
 
   return (
     <div>
@@ -75,47 +169,57 @@ export function ScannerTab({ onViewTicker }) {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          {/* Search */}
+          {/* Search — scans any F&O symbol on demand */}
           <input
             value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search symbol…"
+            placeholder={searching ? 'Scanning…' : 'Scan any symbol…'}
             style={{ padding: '4px 9px', fontSize: 11, background: 'var(--bg2)', border: '0.5px solid var(--border)',
-              borderRadius: 6, color: 'var(--text1)', width: 130, outline: 'none' }} />
+              borderRadius: 6, color: 'var(--text1)', width: 140, outline: 'none' }} />
           {/* Refresh */}
           <button onClick={refresh} disabled={loading}
             style={{ padding: '4px 10px', fontSize: 10, cursor: loading ? 'default' : 'pointer', borderRadius: 6,
               background: 'var(--bg2)', border: '0.5px solid var(--border)', color: 'var(--text2)', opacity: loading ? 0.5 : 1 }}>
             {loading ? '…' : '↺ Refresh'}
           </button>
-          {/* Sort */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sort</span>
+          {/* Sort dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <select value={sort} onChange={e => setSort(e.target.value)}
+            style={{ padding: '4px 28px 4px 10px', fontSize: 11, cursor: 'pointer',
+              background: 'var(--bg2)', border: '0.5px solid var(--border)',
+              borderRadius: 6, color: 'var(--text1)', outline: 'none',
+              appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237a92c0'/%3E%3C/svg%3E")`,
+              backgroundRepeat: 'no-repeat', backgroundPosition: 'right 9px center' }}>
             {SORTS.map(s => (
-              <button key={s.key} onClick={() => setSort(s.key)}
-                style={{ padding: '3px 9px', fontSize: 10, fontWeight: 500, cursor: 'pointer', borderRadius: 4,
-                  background: sort === s.key ? 'var(--text1)' : 'var(--bg2)',
-                  color:      sort === s.key ? 'var(--bg)'    : 'var(--text3)',
-                  border: '0.5px solid var(--border)', transition: 'all 0.12s' }}>
-                {s.label}
-              </button>
+              <option key={s.key} value={s.key}>Sort: {s.label}</option>
             ))}
+          </select>
+          {sort === 'confidence' && <ConfidenceHint />}
           </div>
         </div>
       </div>
 
-      {/* Filter chips */}
-      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 10 }}>
+      {/* Filter chips + confidence toggle */}
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
         {FILTERS.map(f => (
           <button key={f.key} onClick={() => setFilter(f.key)}
             style={{ padding: '4px 11px', fontSize: 10, fontWeight: 600, cursor: 'pointer', borderRadius: 20,
               textTransform: 'uppercase', letterSpacing: '0.06em',
-              background: filter === f.key ? '#EAF3DE' : 'var(--bg2)',
-              color:      filter === f.key ? '#3B6D11'  : 'var(--text2)',
-              border: `0.5px solid ${filter === f.key ? '#3B6D11' : 'var(--border)'}`,
+              background: filter === f.key ? 'rgba(0,212,140,0.15)' : 'var(--bg2)',
+              color:      filter === f.key ? 'var(--green)' : 'var(--text2)',
+              border: `0.5px solid ${filter === f.key ? 'rgba(0,212,140,0.4)' : 'var(--border)'}`,
               transition: 'all 0.12s' }}>
             {f.label}
           </button>
         ))}
+        <button onClick={() => setMinConf(v => !v)}
+          style={{ padding: '4px 11px', fontSize: 10, fontWeight: 600, cursor: 'pointer', borderRadius: 20,
+            textTransform: 'uppercase', letterSpacing: '0.06em',
+            background: minConf ? 'rgba(74,158,255,0.15)' : 'var(--bg2)',
+            color:      minConf ? 'var(--blue)' : 'var(--text2)',
+            border: `0.5px solid ${minConf ? 'rgba(74,158,255,0.4)' : 'var(--border)'}`,
+            transition: 'all 0.12s' }}>
+          ≥70% conf
+        </button>
         {!loading && data && (
           <span style={{ fontSize: 10, color: 'var(--text3)', alignSelf: 'center', marginLeft: 4 }}>
             {sorted.length} result{sorted.length !== 1 ? 's' : ''}
@@ -123,42 +227,76 @@ export function ScannerTab({ onViewTicker }) {
         )}
       </div>
 
-      {loading ? <Loading type="scanner" /> : error ? <ErrorMsg message={error} /> : sorted.length === 0 ? (
+      {loading || searching ? <Loading type="scanner" /> : error ? <ErrorMsg message={error} /> : sorted.length === 0 ? (
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
-          No setups match this filter right now.
+          {search.trim()
+            ? `No data for "${search.trim().toUpperCase()}" — options chain may be unavailable (market closed or symbol not in F&O)`
+            : 'No setups match this filter right now.'}
         </div>
       ) : (
-        sorted.map((s, i) => (
-          <div key={i} className="scanner-card" onClick={() => onViewTicker?.(s.symbol)}
-            style={{ background: 'var(--bg2)', borderRadius: 8, padding: '12px 14px',
-              border: '0.5px solid var(--border)', marginBottom: 6,
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              cursor: 'pointer', transition: 'all 0.15s', gap: 10 }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--green)'; e.currentTarget.style.background = 'var(--bg3)' }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg2)' }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text1)', fontFamily: 'var(--font-mono)' }}>{s.symbol}</span>
-                <span style={{ fontSize: 11, fontWeight: 600, color: chgColor(s.change) }}>{s.change >= 0 ? '+' : ''}{s.change}%</span>
-                <span style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'var(--font-mono)' }}>₹{fmt.price(s.price)}</span>
-              </div>
-              <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.detail}</div>
-              {/* Confidence bar */}
-              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ flex: 1, height: 3, background: 'var(--bg3)', borderRadius: 2, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${s.confidence}%`, borderRadius: 2, transition: 'width 0.4s',
-                    background: s.confidence >= 75 ? 'var(--green)' : s.confidence >= 55 ? 'var(--amber)' : 'var(--red)' }} />
+        sorted.map((s, i) => {
+          const isExp   = expanded === (s.symbol + i)
+          const reasons = signalReasons(s.signals, s.strategy)
+          return (
+            <div key={i} style={{ marginBottom: 6 }}>
+              <div className="scanner-card"
+                style={{ background: 'var(--bg2)', borderRadius: isExp ? '8px 8px 0 0' : 8, padding: '12px 14px',
+                  border: '0.5px solid var(--border)', borderBottom: isExp ? 'none' : undefined,
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  cursor: 'pointer', transition: 'all 0.15s', gap: 10 }}
+                onMouseEnter={e => { if (!isExp) { e.currentTarget.style.borderColor = 'var(--green)'; e.currentTarget.style.background = 'var(--bg3)' }}}
+                onMouseLeave={e => { if (!isExp) { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg2)' }}}
+                onClick={() => setExpanded(isExp ? null : s.symbol + i)}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text1)', fontFamily: 'var(--font-mono)' }}>{s.symbol}</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: chgColor(s.change) }}>{s.change >= 0 ? '+' : ''}{s.change}%</span>
+                    <span style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'var(--font-mono)' }}>₹{fmt.price(s.price)}</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.detail}</div>
+                  <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ flex: 1, height: 3, background: 'var(--bg3)', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${s.confidence}%`, borderRadius: 2, transition: 'width 0.4s',
+                        background: s.confidence >= 75 ? 'var(--green)' : s.confidence >= 55 ? 'var(--amber)' : 'var(--red)' }} />
+                    </div>
+                    <span style={{ fontSize: 9, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{s.confidence}%</span>
+                  </div>
                 </div>
-                <span style={{ fontSize: 9, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{s.confidence}%</span>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
+                  <span className={`badge ${badgeCls(s.strategy)}`}>{s.strategy}</span>
+                  {s.ivr != null && <span style={{ fontSize: 9, color: 'var(--text3)' }}>IVR {s.ivr}</span>}
+                  <span style={{ fontSize: 9, color: 'var(--text3)' }}>{isExp ? '▲ less' : '▼ more'}</span>
+                </div>
               </div>
+
+              {/* Expanded panel */}
+              {isExp && (
+                <div style={{ background: 'var(--bg3)', border: '0.5px solid var(--border)', borderTop: 'none', borderRadius: '0 0 8px 8px', padding: '10px 14px' }}>
+                  {/* Signal reasons */}
+                  {reasons.length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text3)', marginBottom: 5 }}>Why this setup</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                        {reasons.map((r, ri) => (
+                          <span key={ri} style={{ fontSize: 9, padding: '2px 8px', borderRadius: 10, background: 'var(--bg2)', border: '0.5px solid var(--border)', color: 'var(--text2)' }}>{r}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Quick actions */}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={e => { e.stopPropagation(); onViewTicker?.(s.symbol) }}
+                      style={{ flex: 1, padding: '6px 0', fontSize: 10, fontWeight: 600, cursor: 'pointer', borderRadius: 6,
+                        background: 'rgba(0,212,140,0.12)', border: '0.5px solid rgba(0,212,140,0.3)', color: 'var(--green)' }}>
+                      Open full analysis →
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
-              <span className={`badge ${badgeCls(s.strategy)}`}>{s.strategy}</span>
-              {s.ivr != null && <span style={{ fontSize: 9, color: 'var(--text3)' }}>IVR {s.ivr}</span>}
-            </div>
-          </div>
-        ))
+          )
+        })
       )}
     </div>
   )
@@ -217,9 +355,9 @@ export function PositionsTab() {
           ) : (
             <button onClick={handleConnect} disabled={connecting || !configured}
               style={{ fontSize: 11, padding: '5px 14px', cursor: configured ? 'pointer' : 'default', borderRadius: 5, fontWeight: 500,
-                background: configured ? '#EAF3DE' : 'var(--bg2)',
-                border: `0.5px solid ${configured ? '#C0DD97' : 'var(--border)'}`,
-                color: configured ? '#3B6D11' : 'var(--text3)' }}>
+                background: configured ? 'rgba(0,212,140,0.15)' : 'var(--bg2)',
+                border: `0.5px solid ${configured ? 'rgba(0,212,140,0.35)' : 'var(--border)'}`,
+                color: configured ? 'var(--green)' : 'var(--text3)' }}>
               {connecting ? 'Opening…' : 'Connect Kite'}
             </button>
           )}
@@ -362,7 +500,7 @@ export function JournalTab() {
           <textarea value={form.notes} onChange={e => setForm(v => ({ ...v, notes: e.target.value }))} placeholder="Notes (optional)"
             style={{ width: '100%', padding: '6px 8px', fontSize: 12, background: 'var(--bg3)', border: '0.5px solid var(--border)', borderRadius: 5, color: 'var(--text1)', marginBottom: 8, resize: 'vertical', minHeight: 48 }} />
           <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={submit} style={{ flex: 1, padding: '7px', fontSize: 12, cursor: 'pointer', borderRadius: 5, background: '#EAF3DE', border: '0.5px solid #C0DD97', color: '#3B6D11', fontWeight: 500 }}>Save</button>
+            <button onClick={submit} style={{ flex: 1, padding: '7px', fontSize: 12, cursor: 'pointer', borderRadius: 5, background: 'rgba(0,212,140,0.15)', border: '0.5px solid rgba(0,212,140,0.35)', color: 'var(--green)', fontWeight: 500 }}>Save</button>
             <button onClick={() => setAdding(false)} style={{ padding: '7px 16px', fontSize: 12, cursor: 'pointer', borderRadius: 5, background: 'var(--bg2)', border: '0.5px solid var(--border)', color: 'var(--text2)' }}>Cancel</button>
           </div>
         </div>
@@ -685,7 +823,7 @@ export function CalculatorTab() {
         </div>
 
         <button onClick={calculate} disabled={loading || fetching}
-          style={{ width: '100%', padding: '10px', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 6, background: '#EAF3DE', border: '0.5px solid #C0DD97', color: '#3B6D11' }}>
+          style={{ width: '100%', padding: '10px', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 6, background: 'rgba(0,212,140,0.15)', border: '0.5px solid rgba(0,212,140,0.35)', color: 'var(--green)' }}>
           {loading ? 'Calculating...' : 'Calculate P&L'}
         </button>
       </div>
@@ -732,8 +870,8 @@ export function CalculatorTab() {
                 {legs.map((leg, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderBottom: i < 3 ? '0.5px solid var(--border)' : 'none', background: 'var(--bg2)' }}>
                     <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', padding: '2px 7px', borderRadius: 4, flexShrink: 0,
-                      background: leg.action === 'SELL' ? '#FCEBEB' : '#EAF3DE',
-                      color:      leg.action === 'SELL' ? '#A32D2D'  : '#3B6D11' }}>
+                      background: leg.action === 'SELL' ? 'rgba(255,79,79,0.14)' : 'rgba(0,212,140,0.15)',
+                      color:      leg.action === 'SELL' ? 'var(--red)' : 'var(--green)' }}>
                       {leg.action}
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>

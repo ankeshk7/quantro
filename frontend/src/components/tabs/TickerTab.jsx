@@ -8,6 +8,37 @@ import { createChart, CandlestickSeries, HistogramSeries } from 'lightweight-cha
 
 const round2 = (v) => Math.round(v * 100) / 100
 
+function InstRow({ row, last }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div style={{ position: 'relative' }}>
+      <div
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '6px 0', borderBottom: last ? 'none' : '0.5px solid var(--border)',
+          fontSize: 12, cursor: 'default' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--text2)' }}>
+          {row.label}
+          <span style={{ fontSize: 9, color: 'var(--text3)' }}>ⓘ</span>
+        </span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 500, color: row.color }}>{row.val}</span>
+      </div>
+      {show && (
+        <div style={{
+          position: 'absolute', bottom: 'calc(100% + 6px)', left: 0,
+          width: 220, background: 'var(--bg3)', border: '0.5px solid var(--border)',
+          borderRadius: 7, padding: '8px 10px', zIndex: 999,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.25)', fontSize: 10,
+          color: 'var(--text2)', lineHeight: 1.6, pointerEvents: 'none',
+        }}>
+          {row.hint}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function _tvChartUrl(symbol) {
   const map = { 'NIFTY 50': 'NSE:NIFTY', 'NIFTY': 'NSE:NIFTY', 'BANKNIFTY': 'NSE:BANKNIFTY', 'FINNIFTY': 'NSE:FINNIFTY', 'MIDCPNIFTY': 'NSE:MIDCPNIFTY', 'INDIA VIX': 'NSE:INDIAVIX' }
   return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(map[symbol] || 'NSE:' + symbol)}`
@@ -260,6 +291,8 @@ function FullOIAnalysis({ data }) {
 function TickerView({ symbol }) {
   const [showFull,  setShowFull]  = useState(false)
   const [showChart, setShowChart] = useState(false)
+  // v2: invalidate cache on mount so stale responses (pre-institutional field) don't show dashes
+  useEffect(() => { invalidateCache(`ticker-${symbol}`) }, [symbol])
   const { data, loading, error } = useApi(() => api.ticker(symbol), [symbol], `ticker-${symbol}`)
 
   // Real-time LTP from Kite WebSocket — zero delay
@@ -365,19 +398,54 @@ function TickerView({ symbol }) {
           </div>
         )}
 
-        {/* FII / DII */}
-        <SectionTitle>FII / DII activity</SectionTitle>
+        {/* Institutional activity */}
+        <SectionTitle>Institutional activity</SectionTitle>
         <div className="card">
-          {[
-            { label: 'FII net (futures)', val: d.fii?.index_futures_net },
-            { label: 'FII net (options)', val: d.fii?.index_options_net },
-            { label: 'DII cash',          val: d.fii?.cash_net_dii      },
-          ].map((row, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: i < 2 ? '0.5px solid var(--border)' : 'none', fontSize: 12 }}>
-              <span style={{ color: 'var(--text2)' }}>{row.label}</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 500, color: chgColor(row.val) }}>{fmt.inrSign(row.val)} Cr</span>
-            </div>
-          ))}
+          {(() => {
+            const inst = d.institutional || {}
+            const delivPct  = inst.delivery_pct
+            const futOi     = inst.futures_oi
+            const futOiChg  = inst.futures_oi_chg
+            const pcr       = inst.pcr
+            const bias      = inst.futures_bias || 'neutral'
+            const biasColor = bias === 'bullish' ? 'var(--green)' : bias === 'bearish' ? 'var(--red)' : 'var(--text2)'
+            const rows = [
+              {
+                label: 'Delivery %',
+                hint:  'High delivery (>60%) = institutions holding positions, not intraday traders',
+                val:   delivPct != null ? `${delivPct}%` : '—',
+                color: delivPct == null ? 'var(--text2)' : delivPct >= 60 ? 'var(--green)' : delivPct >= 40 ? 'var(--amber)' : 'var(--red)',
+              },
+              {
+                label: 'Futures OI',
+                hint:  'Total open positions in stock futures',
+                val:   futOi != null ? Number(futOi).toLocaleString('en-IN') : '—',
+                color: 'var(--text1)',
+              },
+              {
+                label: 'Futures OI change',
+                hint:  'OI rising with price = longs building (bullish). OI rising with price falling = shorts building (bearish)',
+                val:   futOiChg != null ? `${futOiChg > 0 ? '+' : ''}${Number(futOiChg).toLocaleString('en-IN')}` : '—',
+                color: futOiChg == null ? 'var(--text2)' : futOiChg > 0 ? biasColor : 'var(--text2)',
+              },
+              {
+                label: 'Put-Call Ratio',
+                hint:  'PCR >1.2 = put-heavy (bullish support). PCR <0.8 = call-heavy (bearish pressure)',
+                val:   pcr != null ? pcr.toFixed(2) : '—',
+                color: pcr == null ? 'var(--text2)' : pcr >= 1.2 ? 'var(--green)' : pcr <= 0.8 ? 'var(--red)' : 'var(--amber)',
+              },
+            ]
+            return (
+              <>
+                {rows.map((row, i) => (
+                  <InstRow key={i} row={row} last={i === rows.length - 1} />
+                ))}
+                <div style={{ marginTop: 8, fontSize: 9, color: 'var(--text3)', lineHeight: 1.5 }}>
+                  {inst.note || 'Proxy signals — true FII/DII data is disclosed quarterly only.'}
+                </div>
+              </>
+            )
+          })()}
         </div>
       </div>
 

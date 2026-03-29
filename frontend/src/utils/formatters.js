@@ -29,13 +29,15 @@ export function biasBadge(bias) {
 
 export function impactBadge(impact) {
   const map = {
-    extreme:   'badge-red',
-    high:      'badge-red',
-    watch:     'badge-amber',
-    moderate:  'badge-amber',
-    trade_day: 'badge-green',
-    low:       'badge-gray',
-    clear:     'badge-gray',
+    extreme:     'badge-red',
+    high:        'badge-red',
+    watch:       'badge-amber',
+    moderate:    'badge-amber',
+    trade_day:   'badge-green',
+    nse_holiday: 'badge-blue',
+    us_holiday:  'badge-purple',
+    low:         'badge-gray',
+    clear:       'badge-gray',
   }
   return map[impact] || 'badge-gray'
 }

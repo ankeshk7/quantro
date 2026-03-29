@@ -25,7 +25,14 @@ function _getCachedEntry(key) {
   return null
 }
 
-export function useApi(fetcher, deps = [], cacheKey = null) {
+function _isMarketHours() {
+  const ist = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
+  const day  = ist.getDay()
+  const mins = ist.getHours() * 60 + ist.getMinutes()
+  return day >= 1 && day <= 5 && mins >= 9 * 60 + 15 && mins < 15 * 60 + 30
+}
+
+export function useApi(fetcher, deps = [], cacheKey = null, pollInterval = null) {
   const entry = _getCachedEntry(cacheKey)
   const [data,        setData]        = useState(entry?.data ?? null)
   const [loading,     setLoading]     = useState(entry === null)
@@ -51,6 +58,18 @@ export function useApi(fetcher, deps = [], cacheKey = null) {
   }, deps)
 
   useEffect(() => { load() }, [load])
+
+  // Auto-poll during market hours only
+  useEffect(() => {
+    if (!pollInterval) return
+    const id = setInterval(() => {
+      if (_isMarketHours()) {
+        if (cacheKey) _cache.delete(cacheKey)
+        load(true)
+      }
+    }, pollInterval)
+    return () => clearInterval(id)
+  }, [pollInterval, cacheKey, load])
 
   const refresh = useCallback(() => {
     if (cacheKey) _cache.delete(cacheKey)

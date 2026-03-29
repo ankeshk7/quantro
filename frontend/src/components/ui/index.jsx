@@ -171,23 +171,21 @@ export function ProgressBar({ value, max, color = 'var(--green)', height = 5 }) 
   )
 }
 
-export function NewsCard({ headline, source, sentiment, url }) {
-  const cls     = sentiment === 'positive' ? 'badge-green' : sentiment === 'negative' ? 'badge-red' : 'badge-amber'
-  const content = (
-    <>
-      <div style={{ fontSize: 12, color: url ? 'var(--text1)' : 'var(--text2)', marginBottom: 4, lineHeight: 1.5 }}>{headline}</div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 10, color: 'var(--text3)' }}>{source}</span>
-        <span className={`badge ${cls}`}>{sentiment}</span>
-      </div>
-    </>
+const SENT_CLS = { positive: 'badge-green', negative: 'badge-red', neutral: 'badge-gray' }
+
+export function NewsCard({ headline, sentiment, url }) {
+  const inner = (
+    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+      <div style={{ fontSize: 11.5, color: url ? 'var(--text1)' : 'var(--text2)', lineHeight: 1.45, flex: 1 }}>{headline}</div>
+      <span className={`badge ${SENT_CLS[sentiment] || 'badge-gray'}`} style={{ flexShrink: 0, marginTop: 1 }}>{sentiment}</span>
+    </div>
   )
   if (url) {
     return (
       <a href={url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'block' }}>
-        <div className="card" style={{ marginBottom: 5, cursor: 'pointer' }}>{content}</div>
+        <div className="card" style={{ marginBottom: 4, padding: '6px 10px' }}>{inner}</div>
       </a>
     )
   }
-  return <div className="card" style={{ marginBottom: 5 }}>{content}</div>
+  return <div className="card" style={{ marginBottom: 4, padding: '6px 10px' }}>{inner}</div>
 }

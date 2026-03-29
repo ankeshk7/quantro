@@ -632,7 +632,7 @@ class NSEData:
                 result.append({
                     "sector": sector,
                     "change": pct,
-                    "bias":   "bullish" if pct > 0 else "bearish" if pct < 0 else "neutral",
+                    "bias":   ("bullish" if pct > 0 else "bearish" if pct < 0 else "neutral") if pct is not None else "neutral",
                 })
             return result
         except Exception as e:

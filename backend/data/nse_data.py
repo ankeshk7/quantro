@@ -758,7 +758,7 @@ class NSEData:
         if cached and now - cached["ts"] < _LONG_TTL:
             return cached["data"]
         try:
-            hist = yf.Ticker(_yf_sym(symbol)).history(period="3mo", interval="1d")
+            hist = yf.Ticker(_yf_sym(symbol)).history(period="6mo", interval="1d")
             if len(hist) < 20:
                 raise ValueError("insufficient history")
 
@@ -1016,32 +1016,35 @@ def _score_signals(
 
     signals = {}
 
-    # 1. Trend (EMA alignment)
+    # 1. Trend (EMA alignment) — skip if technicals unavailable
     if trend == "bullish":   signals["trend"] = 1
     elif trend == "bearish": signals["trend"] = -1
     else:                    signals["trend"] = 0
 
-    # 2. RSI momentum
-    if rsi >= 60:            signals["rsi"] = 1
+    # 2. RSI momentum — skip (vote 0) if None
+    if rsi is None:          signals["rsi"] = 0
+    elif rsi >= 60:          signals["rsi"] = 1
     elif rsi <= 40:          signals["rsi"] = -1
     else:                    signals["rsi"] = 0
 
-    # 3. Price vs EMA20
-    if ema20 and price > ema20 * 1.005:   signals["ema"] = 1
-    elif ema20 and price < ema20 * 0.995: signals["ema"] = -1
-    else:                                  signals["ema"] = 0
+    # 3. Price vs EMA20 — skip if ema20 unavailable
+    if ema20 and price and price > ema20 * 1.005:   signals["ema"] = 1
+    elif ema20 and price and price < ema20 * 0.995: signals["ema"] = -1
+    else:                                            signals["ema"] = 0
 
     # 4. PCR (Put-Call Ratio)
     # PCR > 1.2 → more puts = hedging → underlying likely supported → bullish
     # PCR < 0.8 → more calls = speculation → underlying may be topping → bearish
-    if pcr >= 1.2:    signals["pcr"] = 1
+    if pcr is None:   signals["pcr"] = 0
+    elif pcr >= 1.2:  signals["pcr"] = 1
     elif pcr <= 0.8:  signals["pcr"] = -1
     else:             signals["pcr"] = 0
 
     # 5. Price momentum (recent day % change)
-    if pct_change >= 1.0:    signals["momentum"] = 1
-    elif pct_change <= -1.0: signals["momentum"] = -1
-    else:                    signals["momentum"] = 0
+    if pct_change is None:       signals["momentum"] = 0
+    elif pct_change >= 1.0:      signals["momentum"] = 1
+    elif pct_change <= -1.0:     signals["momentum"] = -1
+    else:                        signals["momentum"] = 0
 
     # 6. OI wall skew — spot closer to call wall = bearish resistance overhead
     if call_wall and put_wall and call_wall > put_wall:

@@ -138,9 +138,9 @@ _GAINERS_CACHE: dict = {"data": None, "ts": 0.0}   # top gainers, 3 min TTL
 
 def _load_fo_lot_sizes() -> dict:
     """
-    Download NSE's official F&O market-lots CSV and return {SYMBOL: lot_size}.
-    The CSV has columns: SYMBOL, <month1>, <month2>, <month3> …
-    We use the first non-zero value found for each symbol.
+    Download NSE's official F&O market-lots CSV via the NSELive session
+    (which carries the required cookies).  Falls back to empty dict so
+    get_lot_size() uses the hardcoded LOT_SIZES dict instead.
     Cached for 24 hours — lot sizes are only revised quarterly.
     """
     import csv, io
@@ -149,20 +149,22 @@ def _load_fo_lot_sizes() -> dict:
         return _FO_LOTS_CACHE["data"]
 
     url = "https://archives.nseindia.com/content/fo/fo_mktlots.csv"
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "text/csv,text/plain,*/*",
-        "Referer": "https://www.nseindia.com/",
-    }
     try:
-        resp = requests.get(url, headers=headers, timeout=15)
+        # Must use the NSELive session — plain requests gets a PDF redirect
+        nse_session = _get_nse()
+        if nse_session is None:
+            raise RuntimeError("NSE session unavailable")
+        resp = nse_session.s.get(url, timeout=15)
         resp.raise_for_status()
-        # NSE CSV uses Windows \r\n — normalise before parsing so csv.reader
-        # doesn't choke on embedded carriage returns in unquoted fields.
+
+        # Sanity-check: real CSV starts with "SYMBOL" or a stock name, not "%PDF"
+        first = resp.content[:8]
+        if first.startswith(b"%PDF"):
+            raise ValueError("NSE returned PDF instead of CSV — cookies may be stale")
+
         text   = resp.content.decode("utf-8", errors="ignore").replace("\r\n", "\n").replace("\r", "\n")
         reader = csv.reader(io.StringIO(text))
         rows   = list(reader)
-        # Row 0 is a header like: SYMBOL, Jan 2025, Feb 2025, Mar 2025
         result = {}
         for row in rows[1:]:
             if len(row) < 2:
@@ -170,8 +172,6 @@ def _load_fo_lot_sizes() -> dict:
             sym = row[0].strip().upper()
             if not sym or sym == "SYMBOL":
                 continue
-            # Pick first non-empty, non-zero numeric value across month columns
-            # Use float() then int() to handle "500", "500.0", "1,500" etc.
             for cell in row[1:]:
                 val = cell.strip().replace(",", "").replace(" ", "")
                 if not val:
@@ -183,13 +183,15 @@ def _load_fo_lot_sizes() -> dict:
                         break
                 except (ValueError, TypeError):
                     continue
-        if result:
+        if len(result) > 10:   # accept only if we got a meaningful number of rows
             _FO_LOTS_CACHE["data"] = result
             _FO_LOTS_CACHE["ts"]   = now
             print(f"[NSE] Loaded {len(result)} F&O lot sizes from NSE CSV")
+        else:
+            print(f"[NSE] fo_mktlots CSV returned only {len(result)} rows — using hardcoded fallback")
         return result
     except Exception as e:
-        print(f"[NSE] fo_mktlots fetch failed: {e}")
+        print(f"[NSE] fo_mktlots fetch failed: {e} — using hardcoded fallback")
         return _FO_LOTS_CACHE.get("data") or {}
 
 

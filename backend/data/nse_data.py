@@ -611,37 +611,32 @@ class NSEData:
     # ── Sector performance ────────────────────────────────────────────────────
 
     def get_sector_performance(self) -> list:
+        # Fetch each NSE sector index individually — batch yf.download() silently
+        # drops some NSE index tickers (^CNXAUTO, ^CNXPHARMA etc.) from the result.
+        def _fetch_one(item):
+            sector, sym = item
+            try:
+                hist  = yf.Ticker(sym).history(period="5d", interval="1d")
+                close = hist["Close"].dropna()
+                if len(close) >= 2:
+                    pct = round(
+                        (float(close.iloc[-1]) - float(close.iloc[-2]))
+                        / float(close.iloc[-2]) * 100, 2
+                    )
+                else:
+                    pct = None
+            except Exception:
+                pct = None
+            return {
+                "sector": sector,
+                "change": pct,
+                "bias":   ("bullish" if pct > 0 else "bearish" if pct < 0 else "neutral") if pct is not None else "neutral",
+            }
+
         try:
-            symbols = list(_SECTOR_YF.values())
-            raw = yf.download(
-                tickers     = symbols,
-                period      = "2d",
-                interval    = "1d",
-                group_by    = "ticker",
-                auto_adjust = True,
-                progress    = False,
-                threads     = True,
-            )
-            result = []
-            for sector, sym in _SECTOR_YF.items():
-                try:
-                    hist  = raw[sym] if len(symbols) > 1 else raw
-                    close = hist["Close"].dropna()
-                    if len(close) >= 2:
-                        pct = round(
-                            (float(close.iloc[-1]) - float(close.iloc[-2]))
-                            / float(close.iloc[-2]) * 100, 2
-                        )
-                    else:
-                        pct = None   # only 1 day of data — no change available
-                except Exception:
-                    pct = None       # download failed — show dash, not fake value
-                result.append({
-                    "sector": sector,
-                    "change": pct,
-                    "bias":   ("bullish" if pct > 0 else "bearish" if pct < 0 else "neutral") if pct is not None else "neutral",
-                })
-            return result
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                return list(pool.map(_fetch_one, _SECTOR_YF.items()))
         except Exception as e:
             print(f"[NSE] sectors: {e}")
             return self._mock_sectors()
